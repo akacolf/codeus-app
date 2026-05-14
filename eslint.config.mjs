@@ -28,5 +28,13 @@ export default defineConfig(
       ...eslintPluginReactRefresh.configs.vite.rules
     }
   },
+  {
+    // Vendored shadcn/ui primitives — follow upstream conventions (mixed
+    // component + variants exports, terser return-type style).
+    files: ['src/renderer/src/components/ui/**/*.{ts,tsx}'],
+    rules: {
+      'react-refresh/only-export-components': 'off'
+    }
+  },
   eslintConfigPrettier
 )

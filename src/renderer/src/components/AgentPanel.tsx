@@ -1,4 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
+import { ArrowUp } from 'lucide-react'
+import { Button } from '@renderer/components/ui/button'
+import { Textarea } from '@renderer/components/ui/textarea'
+import { ScrollArea } from '@renderer/components/ui/scroll-area'
+import { cn } from '@renderer/lib/utils'
 
 type Role = 'user' | 'agent' | 'system'
 
@@ -22,10 +27,13 @@ export function AgentPanel(): React.JSX.Element {
   const [messages, setMessages] = useState<Message[]>(INITIAL)
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const viewportRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
+    const el = viewportRef.current?.querySelector(
+      '[data-slot="scroll-area-viewport"]'
+    ) as HTMLElement | null
+    el?.scrollTo({ top: el.scrollHeight })
   }, [messages])
 
   const send = async (): Promise<void> => {
@@ -33,10 +41,14 @@ export function AgentPanel(): React.JSX.Element {
     if (!text || busy) return
     setDraft('')
     setBusy(true)
-    const userMsg: Message = { id: crypto.randomUUID(), role: 'user', content: text, ts: Date.now() }
+    const userMsg: Message = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: text,
+      ts: Date.now()
+    }
     setMessages((m) => [...m, userMsg])
 
-    // Stub: no real model yet. Echo back after a brief delay.
     await new Promise((r) => setTimeout(r, 400))
     const reply: Message = {
       id: crypto.randomUUID(),
@@ -56,58 +68,57 @@ export function AgentPanel(): React.JSX.Element {
   }
 
   return (
-    <div className="flex h-full flex-col border-l border-[var(--color-border)] bg-[var(--color-panel)]">
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--color-border)] px-3 text-xs">
-        <span className="font-medium text-[var(--color-fg)]">Agent</span>
-        <span className="text-[10px] uppercase tracking-wider text-[var(--color-muted)]">
-          stub
-        </span>
+    <div className="flex h-full flex-col bg-card">
+      <div className="flex h-10 shrink-0 items-center justify-between px-4 text-xs">
+        <span className="font-medium">Agent</span>
+        <span className="text-[10px] tracking-wider uppercase text-muted-foreground">stub</span>
       </div>
 
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-        <ul className="flex flex-col gap-3">
-          {messages.map((m) => (
-            <li key={m.id} className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wider text-[var(--color-muted)]">
-                {m.role}
-              </span>
-              <div
-                className={
-                  'rounded-md border px-3 py-2 text-sm leading-relaxed ' +
-                  (m.role === 'user'
-                    ? 'border-[var(--color-accent)]/40 bg-[var(--color-accent)]/10 text-[var(--color-fg)]'
-                    : m.role === 'agent'
-                      ? 'border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-fg)]'
-                      : 'border-dashed border-[var(--color-border)] bg-transparent text-[var(--color-muted)]')
-                }
-              >
-                {m.content}
-              </div>
-            </li>
-          ))}
-          {busy && (
-            <li className="text-xs text-[var(--color-muted)] italic">agent is thinking…</li>
-          )}
-        </ul>
+      <div ref={viewportRef} className="min-h-0 flex-1">
+        <ScrollArea className="h-full">
+          <ul className="flex flex-col gap-3 px-4 py-3">
+            {messages.map((m) => (
+              <li key={m.id} className="flex flex-col gap-1">
+                <span className="text-[10px] tracking-wider uppercase text-muted-foreground">
+                  {m.role}
+                </span>
+                <div
+                  className={cn(
+                    'rounded-2xl px-4 py-2.5 text-sm leading-relaxed',
+                    m.role === 'user' && 'bg-primary text-primary-foreground',
+                    m.role === 'agent' && 'bg-secondary text-secondary-foreground',
+                    m.role === 'system' && 'bg-transparent text-muted-foreground italic'
+                  )}
+                >
+                  {m.content}
+                </div>
+              </li>
+            ))}
+            {busy && <li className="text-xs italic text-muted-foreground">agent is thinking…</li>}
+          </ul>
+        </ScrollArea>
       </div>
 
-      <div className="shrink-0 border-t border-[var(--color-border)] p-2">
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={onKey}
-          placeholder="Ask the agent…  (Enter to send, Shift+Enter for newline)"
-          rows={3}
-          className="w-full resize-none rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-fg)] placeholder:text-[var(--color-muted)] focus:border-[var(--color-accent)] focus:outline-none"
-        />
-        <div className="mt-1 flex items-center justify-end">
-          <button
-            onClick={() => void send()}
-            disabled={busy || !draft.trim()}
-            className="rounded-md border border-[var(--color-accent)]/60 bg-[var(--color-accent)]/15 px-3 py-1 text-xs font-medium text-[var(--color-fg)] hover:bg-[var(--color-accent)]/25 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Send
-          </button>
+      <div className="shrink-0 p-3">
+        <div className="flex flex-col gap-2 rounded-3xl bg-input p-3">
+          <Textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={onKey}
+            placeholder="Ask the agent…  (Enter to send, Shift+Enter for newline)"
+            rows={2}
+            className="min-h-9 resize-none bg-transparent p-0 text-sm"
+          />
+          <div className="flex items-center justify-end">
+            <Button
+              size="icon-sm"
+              onClick={() => void send()}
+              disabled={busy || !draft.trim()}
+              aria-label="Send"
+            >
+              <ArrowUp />
+            </Button>
+          </div>
         </div>
       </div>
     </div>
