@@ -19,6 +19,8 @@ interface ChatStore {
   forward: () => void
   newChat: () => void
   selectChat: (id: string) => void
+  renameChat: (id: string, title: string) => void
+  deleteChat: (id: string) => void
 
   sendMessage: (text: string, settings: ChatSettingsSnapshot) => void
   stopStreaming: () => void
@@ -57,6 +59,29 @@ export const useChatStore = create<ChatStore>()(
       set({
         history: [...history.slice(0, index + 1), { type: 'chat', chatId: id }],
         index: index + 1
+      })
+    },
+
+    renameChat: (id, title) => {
+      const trimmed = title.trim()
+      if (!trimmed) return
+      set((s) => ({
+        chats: s.chats.map((c) => (c.id === id ? { ...c, title: trimmed } : c))
+      }))
+    },
+
+    deleteChat: (id) => {
+      const cancel = cancelHandles.get(id)
+      if (cancel) {
+        cancel()
+        cancelHandles.delete(id)
+      }
+      set((s) => {
+        const chats = s.chats.filter((c) => c.id !== id)
+        const history = s.history.filter((v) => !(v.type === 'chat' && v.chatId === id))
+        const trimmedHistory = history.length === 0 ? [{ type: 'home' as const }] : history
+        const index = Math.min(s.index, trimmedHistory.length - 1)
+        return { chats, history: trimmedHistory, index }
       })
     },
 

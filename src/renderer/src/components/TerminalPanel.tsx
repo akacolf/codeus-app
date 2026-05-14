@@ -49,6 +49,7 @@ export function TerminalPanel({ open, onClose }: TerminalPanelProps): React.JSX.
     if (open && tabs.length === 0) {
       const id = genId()
       counterRef.current = 1
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTabs([{ id }])
       setActiveId(id)
     }

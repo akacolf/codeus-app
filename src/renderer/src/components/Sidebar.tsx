@@ -1,16 +1,26 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeft,
   ArrowRight,
   ChevronRight,
   FolderTree,
+  MoreHorizontal,
   PanelLeftOpen,
+  Pencil,
   Plus,
-  Search
+  Search,
+  Trash2
 } from 'lucide-react'
 import { cn } from '@renderer/lib/utils'
 import type { Chat } from '@renderer/lib/chat'
 import { groupChatsByProject } from '@renderer/lib/projects'
+import { useChatStore } from '@renderer/stores/chatStore'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from './ui/dropdown-menu'
 import logoWhite from '../assets/logo-white.svg'
 import { ChromeButton } from './Toolbar'
 
@@ -50,6 +60,9 @@ export function Sidebar({
 
   const groups = useMemo(() => groupChatsByProject(chats), [chats])
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const renameChat = useChatStore((s) => s.renameChat)
+  const deleteChat = useChatStore((s) => s.deleteChat)
 
   const toggle = (key: string): void => setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }))
 
@@ -128,19 +141,20 @@ export function Sidebar({
                     {!isCollapsed && (
                       <ul className="mt-0.5 pl-2">
                         {g.chats.map((c) => (
-                          <li key={c.id}>
-                            <button
-                              type="button"
-                              onClick={() => onSelectChat(c.id)}
-                              aria-current={c.id === activeChatId}
-                              className={cn(
-                                'block w-full truncate rounded-lg px-3 py-1.5 text-left text-sm text-foreground/85 hover:bg-white/8',
-                                c.id === activeChatId && 'bg-white/8 text-foreground'
-                              )}
-                            >
-                              {c.title || 'New chat'}
-                            </button>
-                          </li>
+                          <ChatRow
+                            key={c.id}
+                            chat={c}
+                            active={c.id === activeChatId}
+                            editing={editingId === c.id}
+                            onSelect={() => onSelectChat(c.id)}
+                            onStartRename={() => setEditingId(c.id)}
+                            onCommitRename={(title) => {
+                              renameChat(c.id, title)
+                              setEditingId(null)
+                            }}
+                            onCancelRename={() => setEditingId(null)}
+                            onDelete={() => deleteChat(c.id)}
+                          />
                         ))}
                       </ul>
                     )}
@@ -183,5 +197,126 @@ function NavButton({
       <Icon className="size-[18px] text-muted-foreground" />
       <span>{label}</span>
     </button>
+  )
+}
+
+interface ChatRowProps {
+  chat: Chat
+  active: boolean
+  editing: boolean
+  onSelect: () => void
+  onStartRename: () => void
+  onCommitRename: (title: string) => void
+  onCancelRename: () => void
+  onDelete: () => void
+}
+
+function ChatRow({
+  chat,
+  active,
+  editing,
+  onSelect,
+  onStartRename,
+  onCommitRename,
+  onCancelRename,
+  onDelete
+}: ChatRowProps): React.JSX.Element {
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  return (
+    <li className="group/row relative">
+      {editing ? (
+        <ChatRowEditor
+          initialTitle={chat.title}
+          onCommit={onCommitRename}
+          onCancel={onCancelRename}
+        />
+      ) : (
+        <>
+          <button
+            type="button"
+            onClick={onSelect}
+            aria-current={active}
+            className={cn(
+              'block w-full truncate rounded-lg px-3 py-1.5 pr-8 text-left text-sm text-foreground/85 hover:bg-white/8',
+              active && 'bg-white/8 text-foreground'
+            )}
+          >
+            {chat.title || 'New chat'}
+          </button>
+          <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label="Chat actions"
+                onClick={(e) => e.stopPropagation()}
+                className={cn(
+                  'absolute top-1/2 right-1 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-white/10 hover:text-foreground focus-visible:opacity-100 group-hover/row:opacity-100',
+                  menuOpen && 'opacity-100'
+                )}
+              >
+                <MoreHorizontal className="size-3.5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" side="bottom" className="w-36">
+              <DropdownMenuItem onSelect={() => onStartRename()}>
+                <Pencil className="size-3.5" />
+                Rename
+              </DropdownMenuItem>
+              <DropdownMenuItem variant="destructive" onSelect={() => onDelete()}>
+                <Trash2 className="size-3.5" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </>
+      )}
+    </li>
+  )
+}
+
+function ChatRowEditor({
+  initialTitle,
+  onCommit,
+  onCancel
+}: {
+  initialTitle: string
+  onCommit: (title: string) => void
+  onCancel: () => void
+}): React.JSX.Element {
+  const [draft, setDraft] = useState(initialTitle)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [])
+
+  const commit = (): void => {
+    const next = draft.trim()
+    if (!next || next === initialTitle) {
+      onCancel()
+      return
+    }
+    onCommit(next)
+  }
+
+  return (
+    <input
+      ref={inputRef}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          commit()
+        } else if (e.key === 'Escape') {
+          e.preventDefault()
+          onCancel()
+        }
+      }}
+      className="block w-full rounded-lg bg-white/8 px-3 py-1.5 text-sm text-foreground outline-none"
+    />
   )
 }
