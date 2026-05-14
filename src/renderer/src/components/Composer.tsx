@@ -1,5 +1,5 @@
 import { forwardRef, useRef, useState } from 'react'
-import { ArrowUp, Check, ChevronDown, Hand, Mic, Paperclip, Plus } from 'lucide-react'
+import { ArrowUp, Check, ChevronDown, Eye, Mic, Paperclip, Plus, Shield, Zap } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover'
 import { cn } from '@renderer/lib/utils'
@@ -19,16 +19,25 @@ interface ComposerProps {
   autoFocus?: boolean
 }
 
+const PERMISSION_ICONS: Record<PermissionId, React.ComponentType<{ className?: string }>> = {
+  default: Shield,
+  'read-only': Eye,
+  auto: Zap
+}
+
 export function Composer({ onSubmit, placeholder, autoFocus }: ComposerProps): React.JSX.Element {
   const [draft, setDraft] = useState('')
   const [attachments, setAttachments] = useState<string[]>([])
   const [listening, setListening] = useState(false)
+  const [permissionOpen, setPermissionOpen] = useState(false)
+  const [modelOpen, setModelOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const { settings, set } = useSettings()
 
   const model = modelById(settings.model)
   const permission = permissionById(settings.permission)
+  const PermissionIcon = PERMISSION_ICONS[settings.permission]
   const canSend = draft.trim().length > 0
 
   const send = (): void => {
@@ -112,26 +121,34 @@ export function Composer({ onSubmit, placeholder, autoFocus }: ComposerProps): R
             <Plus />
           </Button>
 
-          <Popover>
+          <Popover open={permissionOpen} onOpenChange={setPermissionOpen}>
             <PopoverTrigger asChild>
               <PillButton>
-                <Hand className="size-3.5" />
+                <PermissionIcon className="size-3.5" />
                 <span className="truncate">{permission.label}</span>
                 <ChevronDown className="size-3.5 opacity-70" />
               </PillButton>
             </PopoverTrigger>
             <PopoverContent align="start" className="w-64">
               <OptionList
-                items={PERMISSIONS}
+                items={PERMISSIONS.map((p) => ({
+                  id: p.id,
+                  label: p.label,
+                  hint: p.hint,
+                  icon: PERMISSION_ICONS[p.id]
+                }))}
                 selectedId={settings.permission}
-                onSelect={(id) => set('permission', id as PermissionId)}
+                onSelect={(id) => {
+                  set('permission', id as PermissionId)
+                  setPermissionOpen(false)
+                }}
               />
             </PopoverContent>
           </Popover>
         </div>
 
         <div className="flex items-center gap-1">
-          <Popover>
+          <Popover open={modelOpen} onOpenChange={setModelOpen}>
             <PopoverTrigger asChild>
               <PillButton>
                 <span className="truncate">{model.label}</span>
@@ -146,7 +163,10 @@ export function Composer({ onSubmit, placeholder, autoFocus }: ComposerProps): R
                   hint: m.hint
                 }))}
                 selectedId={settings.model}
-                onSelect={(id) => set('model', id as ModelId)}
+                onSelect={(id) => {
+                  set('model', id as ModelId)
+                  setModelOpen(false)
+                }}
               />
             </PopoverContent>
           </Popover>
@@ -183,6 +203,7 @@ interface OptionItem {
   id: string
   label: string
   hint?: string
+  icon?: React.ComponentType<{ className?: string }>
 }
 
 function OptionList({
@@ -198,16 +219,18 @@ function OptionList({
     <ul className="flex flex-col gap-1">
       {items.map((it) => {
         const active = it.id === selectedId
+        const Icon = it.icon
         return (
           <li key={it.id}>
             <button
               type="button"
               onClick={() => onSelect(it.id)}
               className={cn(
-                'flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-left text-sm hover:bg-white/8',
+                'flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-sm hover:bg-white/8',
                 active && 'bg-white/8'
               )}
             >
+              {Icon && <Icon className="size-[15px] shrink-0 text-muted-foreground" />}
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate text-foreground">{it.label}</span>
                 {it.hint && (

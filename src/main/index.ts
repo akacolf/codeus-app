@@ -51,6 +51,7 @@ function createWindow(): void {
     height: 900,
     minWidth: 1100,
     minHeight: 700,
+    center: true,
     show: false,
     autoHideMenuBar: true,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
@@ -66,6 +67,19 @@ function createWindow(): void {
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
   })
+
+  const emitChromeState = (): void => {
+    if (mainWindow.isDestroyed()) return
+    mainWindow.webContents.send('window:chrome', {
+      fullscreen: mainWindow.isFullScreen(),
+      maximized: mainWindow.isMaximized()
+    })
+  }
+  mainWindow.on('enter-full-screen', emitChromeState)
+  mainWindow.on('leave-full-screen', emitChromeState)
+  mainWindow.on('maximize', emitChromeState)
+  mainWindow.on('unmaximize', emitChromeState)
+  mainWindow.webContents.on('did-finish-load', emitChromeState)
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)

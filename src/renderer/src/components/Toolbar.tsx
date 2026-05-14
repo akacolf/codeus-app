@@ -27,6 +27,7 @@ import logoWhite from '../assets/logo-white.svg'
 
 interface ToolbarProps {
   sidebarOpen: boolean
+  trafficLightInset?: boolean
   onToggleSidebar: () => void
   onBack?: () => void
   onForward?: () => void
@@ -40,6 +41,7 @@ interface ToolbarProps {
 
 export function Toolbar({
   sidebarOpen,
+  trafficLightInset = true,
   onToggleSidebar,
   onBack,
   onForward,
@@ -53,7 +55,10 @@ export function Toolbar({
   const ToggleIcon = sidebarOpen ? PanelLeftOpen : PanelLeft
   return (
     <div
-      className="flex h-10 shrink-0 items-center gap-1 pr-3 pl-[84px]"
+      className={cn(
+        'flex h-10 shrink-0 items-center gap-1 pr-3',
+        trafficLightInset ? 'pl-[84px]' : 'pl-3'
+      )}
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     >
       <ChromeButton label="Toggle sidebar" active={sidebarOpen} onClick={onToggleSidebar}>

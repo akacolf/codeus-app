@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, Copy, Square } from 'lucide-react'
+import { Check, Copy, Square, ThumbsDown, ThumbsUp } from 'lucide-react'
 import type { Chat, Message } from '@renderer/lib/chat'
 import { cn } from '@renderer/lib/utils'
 import { Button } from '@renderer/components/ui/button'
@@ -24,11 +24,7 @@ export function Thread({ chat, onSubmit, onStop }: ThreadProps): React.JSX.Eleme
       <div className="min-h-0 flex-1 overflow-y-auto px-6">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 py-8">
           {chat.messages.map((m) => (
-            <MessageBubble
-              key={m.id}
-              message={m}
-              isStreaming={m.id === chat.streamingMessageId}
-            />
+            <MessageBubble key={m.id} message={m} isStreaming={m.id === chat.streamingMessageId} />
           ))}
           {chat.error && (
             <div className="self-start rounded-2xl bg-white/8 px-4 py-2.5 text-sm text-foreground/85">
@@ -70,14 +66,19 @@ function MessageBubble({
 }): React.JSX.Element {
   if (message.role === 'user') {
     return (
-      <div className="max-w-[80%] self-end rounded-2xl bg-input px-4 py-2.5 text-sm whitespace-pre-wrap">
-        {message.text}
+      <div className="group flex max-w-[80%] flex-col items-end gap-1 self-end">
+        <div className="rounded-2xl bg-input px-4 py-2.5 text-sm whitespace-pre-wrap">
+          {message.text}
+        </div>
+        <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+          <CopyAction text={message.text} />
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="group flex max-w-[85%] flex-col gap-2 self-start">
+    <div className="group flex max-w-[85%] flex-col gap-1.5 self-start">
       <div className="text-sm leading-relaxed text-foreground/90">
         <RenderedMarkdown text={message.text} />
         {isStreaming && (
@@ -87,28 +88,73 @@ function MessageBubble({
           />
         )}
       </div>
-      {!isStreaming && message.text.length > 0 && <CopyButton text={message.text} />}
+      {!isStreaming && message.text.length > 0 && (
+        <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+          <CopyAction text={message.text} />
+          <FeedbackAction key={`${message.id}-up`} kind="up" />
+          <FeedbackAction key={`${message.id}-down`} kind="down" />
+        </div>
+      )}
     </div>
   )
 }
 
-function CopyButton({ text }: { text: string }): React.JSX.Element {
-  const [copied, setCopied] = useState(false)
+function ActionButton({
+  label,
+  onClick,
+  active,
+  children
+}: {
+  label: string
+  onClick: () => void
+  active?: boolean
+  children: React.ReactNode
+}): React.JSX.Element {
   return (
     <button
       type="button"
+      onClick={onClick}
+      aria-label={label}
+      aria-pressed={active}
+      title={label}
+      className={cn(
+        'inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-white/8 hover:text-foreground',
+        active && 'bg-white/8 text-foreground'
+      )}
+    >
+      {children}
+    </button>
+  )
+}
+
+function CopyAction({ text }: { text: string }): React.JSX.Element {
+  const [copied, setCopied] = useState(false)
+  return (
+    <ActionButton
+      label={copied ? 'Copied' : 'Copy message'}
       onClick={() => {
         void navigator.clipboard.writeText(text).then(() => {
           setCopied(true)
           setTimeout(() => setCopied(false), 1200)
         })
       }}
-      className="inline-flex w-fit items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
-      aria-label="Copy message"
     >
-      {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
-      {copied ? 'Copied' : 'Copy'}
-    </button>
+      {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+    </ActionButton>
+  )
+}
+
+function FeedbackAction({ kind }: { kind: 'up' | 'down' }): React.JSX.Element {
+  const [active, setActive] = useState(false)
+  const Icon = kind === 'up' ? ThumbsUp : ThumbsDown
+  return (
+    <ActionButton
+      label={kind === 'up' ? 'Good response' : 'Bad response'}
+      active={active}
+      onClick={() => setActive((v) => !v)}
+    >
+      <Icon className="size-3.5" />
+    </ActionButton>
   )
 }
 
@@ -122,10 +168,7 @@ function RenderedMarkdown({ text }: { text: string }): React.JSX.Element {
         p.kind === 'code' ? (
           <CodeBlock key={i} code={p.code} lang={p.lang} />
         ) : (
-          <p
-            key={i}
-            className={cn('whitespace-pre-wrap', i > 0 && 'mt-3')}
-          >
+          <p key={i} className={cn('whitespace-pre-wrap', i > 0 && 'mt-3')}>
             {p.text}
           </p>
         )
@@ -153,7 +196,8 @@ function splitFenced(text: string): Part[] {
   while ((m = regex.exec(text)) !== null) {
     if (m.index > last) {
       const slice = text.slice(last, m.index)
-      if (slice.trim().length > 0) parts.push({ kind: 'text', text: slice.replace(/^\n+|\n+$/g, '') })
+      if (slice.trim().length > 0)
+        parts.push({ kind: 'text', text: slice.replace(/^\n+|\n+$/g, '') })
     }
     parts.push({ kind: 'code', lang: m[1].trim(), code: m[2].replace(/\n$/, '') })
     last = regex.lastIndex

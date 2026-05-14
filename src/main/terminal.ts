@@ -49,12 +49,9 @@ export function registerTerminalIpc(getProjectCwd: () => string): void {
     return { ok: true }
   })
 
-  ipcMain.on(
-    'terminal:write',
-    (_event, { ptyId, data }: { ptyId: string; data: string }) => {
-      ptys.get(ptyId)?.write(data)
-    }
-  )
+  ipcMain.on('terminal:write', (_event, { ptyId, data }: { ptyId: string; data: string }) => {
+    ptys.get(ptyId)?.write(data)
+  })
 
   ipcMain.on(
     'terminal:resize',

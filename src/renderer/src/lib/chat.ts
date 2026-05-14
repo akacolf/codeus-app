@@ -12,6 +12,7 @@ export interface Chat {
   title: string
   messages: Message[]
   createdAt: number
+  projectCwd?: string
   streamingMessageId?: string
   error?: string
 }

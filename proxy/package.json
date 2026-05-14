@@ -1,0 +1,17 @@
+{
+  "name": "qc-codium-proxy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Quantum Club credit proxy — Anthropic-compatible /v1/messages forwarder",
+  "scripts": {
+    "dev": "bun run --watch dev.ts",
+    "dev:vercel": "vercel dev",
+    "deploy:preview": "vercel deploy",
+    "deploy:prod": "vercel deploy --prod"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "@types/node": "^22.19.1",
+    "typescript": "^5.9.3"
+  }
+}

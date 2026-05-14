@@ -12,6 +12,7 @@ export interface Shortcut {
 export const SHORTCUTS: Shortcut[] = [
   { id: 'new-chat', label: 'New chat', keys: [MOD, 'N'] },
   { id: 'toggle-sidebar', label: 'Toggle sidebar', keys: [MOD, 'B'] },
+  { id: 'search-chats', label: 'Search chats', keys: [MOD, 'K'] },
   { id: 'open-terminal', label: 'Open terminal', keys: [MOD, 'T'] },
   { id: 'reveal-in-folder', label: 'Reveal project in Finder', keys: [MOD, 'Shift', 'O'] },
   { id: 'open-settings', label: 'Open settings', keys: [MOD, ','] },

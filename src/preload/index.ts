@@ -3,7 +3,6 @@ import { electronAPI } from '@electron-toolkit/preload'
 
 export interface ChatStartParams {
   requestId: string
-  apiKey: string
   model: string
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
 }
@@ -83,10 +82,24 @@ function openPty(
   }
 }
 
+export interface ChromeState {
+  fullscreen: boolean
+  maximized: boolean
+}
+
+function onChromeState(cb: (s: ChromeState) => void): () => void {
+  const handler = (_e: IpcRendererEvent, s: ChromeState): void => cb(s)
+  ipcRenderer.on('window:chrome', handler)
+  return (): void => {
+    ipcRenderer.off('window:chrome', handler)
+  }
+}
+
 const api = {
   openTerminal: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('open-terminal'),
   revealInFolder: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('reveal-in-folder'),
   projectCwd: (): Promise<string> => ipcRenderer.invoke('project-cwd'),
+  onChromeState,
   chat: { start: startChat },
   terminal: { open: openPty }
 }

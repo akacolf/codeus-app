@@ -19,13 +19,11 @@ export type ModelId = (typeof MODELS)[number]['id']
 interface Settings {
   permission: PermissionId
   model: ModelId
-  apiKey: string
 }
 
 const DEFAULTS: Settings = {
   permission: 'default',
-  model: 'opus-4.7',
-  apiKey: ''
+  model: 'opus-4.7'
 }
 
 const KEY = 'qc-codium.settings.v1'

@@ -144,11 +144,7 @@ function TerminalTab({
         active && 'bg-white/8 text-foreground'
       )}
     >
-      <button
-        type="button"
-        onClick={onSelect}
-        className="inline-flex items-center gap-1.5 pr-3"
-      >
+      <button type="button" onClick={onSelect} className="inline-flex items-center gap-1.5 pr-3">
         <span className="font-mono">{label}</span>
       </button>
       <button

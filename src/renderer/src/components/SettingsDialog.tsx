@@ -1,5 +1,3 @@
-import { useState } from 'react'
-import { Eye, EyeOff } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -7,8 +5,6 @@ import {
   DialogHeader,
   DialogTitle
 } from '@renderer/components/ui/dialog'
-import { Input } from '@renderer/components/ui/input'
-import { Button } from '@renderer/components/ui/button'
 import { MODELS, PERMISSIONS, useSettings } from '@renderer/lib/settings'
 import { cn } from '@renderer/lib/utils'
 
@@ -19,7 +15,6 @@ interface SettingsDialogProps {
 
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): React.JSX.Element {
   const { settings, set } = useSettings()
-  const [showKey, setShowKey] = useState(false)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -32,30 +27,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
         </DialogHeader>
 
         <div className="flex flex-col gap-6">
-          <Section
-            title="Anthropic API key"
-            hint="Stored in localStorage. The agent loop will read this once it lands."
-          >
-            <div className="flex gap-2">
-              <Input
-                type={showKey ? 'text' : 'password'}
-                value={settings.apiKey}
-                onChange={(e) => set('apiKey', e.target.value)}
-                placeholder="sk-ant-…"
-                autoComplete="off"
-                spellCheck={false}
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={showKey ? 'Hide key' : 'Show key'}
-                onClick={() => setShowKey((v) => !v)}
-              >
-                {showKey ? <EyeOff /> : <Eye />}
-              </Button>
-            </div>
-          </Section>
-
           <Section title="Default model">
             <ChipRow
               items={MODELS.map((m) => ({ id: m.id, label: m.label }))}

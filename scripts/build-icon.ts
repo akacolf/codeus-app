@@ -3,7 +3,7 @@
 // shape next to VS Code / Codex / etc. The mark from resources/logo.svg is
 // rasterized on top, inset inside the 824×824 art area.
 //
-// Run: bun run scripts/build-icon.mjs
+// Run: bun run scripts/build-icon.ts
 
 import { writeFileSync, readFileSync, mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
