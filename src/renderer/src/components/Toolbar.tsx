@@ -1,0 +1,183 @@
+import {
+  ArrowLeft,
+  ArrowRight,
+  ChevronDown,
+  FolderOpen,
+  Info,
+  Keyboard,
+  PanelLeft,
+  PanelLeftOpen,
+  Settings,
+  SquarePen,
+  Terminal
+} from 'lucide-react'
+import { cn } from '@renderer/lib/utils'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger
+} from '@renderer/components/ui/dropdown-menu'
+import { Kbd } from '@renderer/components/ui/kbd'
+import { shortcutById } from '@renderer/lib/shortcuts'
+import logoWhite from '../assets/logo-white.svg'
+
+interface ToolbarProps {
+  sidebarOpen: boolean
+  onToggleSidebar: () => void
+  onBack?: () => void
+  onForward?: () => void
+  onCompose?: () => void
+  onOpenTerminal?: () => void
+  onRevealInFolder?: () => void
+  onOpenSettings?: () => void
+  onOpenShortcuts?: () => void
+  onOpenAbout?: () => void
+}
+
+export function Toolbar({
+  sidebarOpen,
+  onToggleSidebar,
+  onBack,
+  onForward,
+  onCompose,
+  onOpenTerminal,
+  onRevealInFolder,
+  onOpenSettings,
+  onOpenShortcuts,
+  onOpenAbout
+}: ToolbarProps): React.JSX.Element {
+  const ToggleIcon = sidebarOpen ? PanelLeftOpen : PanelLeft
+  return (
+    <div
+      className="flex h-10 shrink-0 items-center gap-1 pr-3 pl-[84px]"
+      style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+    >
+      <ChromeButton label="Toggle sidebar" active={sidebarOpen} onClick={onToggleSidebar}>
+        <ToggleIcon />
+      </ChromeButton>
+      <ChromeButton label="Back" onClick={onBack} disabled={!onBack}>
+        <ArrowLeft />
+      </ChromeButton>
+      <ChromeButton label="Forward" onClick={onForward} disabled={!onForward}>
+        <ArrowRight />
+      </ChromeButton>
+      <ChromeButton label="New chat" onClick={onCompose} disabled={!onCompose}>
+        <SquarePen />
+      </ChromeButton>
+
+      <div className="flex-1" />
+
+      <ChromeButton label="Open terminal" onClick={onOpenTerminal} disabled={!onOpenTerminal}>
+        <Terminal />
+      </ChromeButton>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-label="QC Codium menu"
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-muted-foreground transition-colors hover:bg-white/8 hover:text-foreground data-[state=open]:bg-white/8 data-[state=open]:text-foreground"
+          >
+            <img src={logoWhite} alt="" aria-hidden className="size-6" />
+            <ChevronDown className="size-3.5 opacity-70" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" sideOffset={6} className="w-64">
+          <DropdownMenuLabel className="text-muted-foreground">QC Codium</DropdownMenuLabel>
+
+          <DropdownMenuItem onSelect={() => onOpenTerminal?.()} disabled={!onOpenTerminal}>
+            <Terminal />
+            <span>Open terminal</span>
+            <ShortcutHint id="open-terminal" />
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onRevealInFolder?.()} disabled={!onRevealInFolder}>
+            <FolderOpen />
+            <span>Reveal in Finder</span>
+            <ShortcutHint id="reveal-in-folder" />
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator />
+
+          <DropdownMenuItem onSelect={() => onOpenShortcuts?.()} disabled={!onOpenShortcuts}>
+            <Keyboard />
+            <span>Keyboard shortcuts</span>
+            <ShortcutHint id="show-shortcuts" />
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onOpenSettings?.()} disabled={!onOpenSettings}>
+            <Settings />
+            <span>Settings…</span>
+            <ShortcutHint id="open-settings" />
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator />
+
+          <DropdownMenuItem onSelect={() => onOpenAbout?.()} disabled={!onOpenAbout}>
+            <Info />
+            <span>About QC Codium</span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <div aria-hidden className="mx-1 h-4 w-px bg-white/12" />
+      <ChromeButton label="Settings" onClick={onOpenSettings} disabled={!onOpenSettings}>
+        <Settings />
+      </ChromeButton>
+    </div>
+  )
+}
+
+function ShortcutHint({ id }: { id: string }): React.JSX.Element | null {
+  const s = shortcutById(id)
+  if (!s) return null
+  return (
+    <DropdownMenuShortcut className="flex items-center gap-0.5">
+      {s.keys.map((k) => (
+        <Kbd key={k}>{k}</Kbd>
+      ))}
+    </DropdownMenuShortcut>
+  )
+}
+
+interface ChromeButtonProps {
+  label: string
+  active?: boolean
+  disabled?: boolean
+  onClick?: () => void
+  children: React.ReactNode
+}
+
+function ChromeButton({
+  label,
+  active,
+  disabled,
+  onClick,
+  children
+}: ChromeButtonProps): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      aria-pressed={active}
+      title={label}
+      style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+      className={cn(
+        'inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors',
+        'hover:bg-white/8 hover:text-foreground',
+        'disabled:pointer-events-none disabled:opacity-30',
+        active && 'bg-white/8 text-foreground',
+        '[&_svg]:size-[15px]'
+      )}
+    >
+      {children}
+    </button>
+  )
+}
+
+export { ChromeButton }

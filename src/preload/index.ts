@@ -1,12 +1,98 @@
-import { contextBridge } from 'electron'
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
-// Custom APIs for renderer
-const api = {}
+export interface ChatStartParams {
+  requestId: string
+  apiKey: string
+  model: string
+  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
+}
 
-// Use `contextBridge` APIs to expose Electron APIs to
-// renderer only if context isolation is enabled, otherwise
-// just add to the DOM global.
+export interface ChatHandlers {
+  onChunk: (delta: string) => void
+  onDone: () => void
+  onError: (message: string) => void
+}
+
+function startChat(params: ChatStartParams, handlers: ChatHandlers): () => void {
+  const { requestId } = params
+
+  const chunk = (_e: IpcRendererEvent, p: { requestId: string; delta: string }): void => {
+    if (p.requestId === requestId) handlers.onChunk(p.delta)
+  }
+  const done = (_e: IpcRendererEvent, p: { requestId: string }): void => {
+    if (p.requestId === requestId) cleanup(() => handlers.onDone())
+  }
+  const err = (_e: IpcRendererEvent, p: { requestId: string; message: string }): void => {
+    if (p.requestId === requestId) cleanup(() => handlers.onError(p.message))
+  }
+
+  const cleanup = (then: () => void): void => {
+    ipcRenderer.off('chat:chunk', chunk)
+    ipcRenderer.off('chat:done', done)
+    ipcRenderer.off('chat:error', err)
+    then()
+  }
+
+  ipcRenderer.on('chat:chunk', chunk)
+  ipcRenderer.on('chat:done', done)
+  ipcRenderer.on('chat:error', err)
+  ipcRenderer.send('chat:start', params)
+
+  return (): void => {
+    ipcRenderer.send('chat:cancel', { requestId })
+  }
+}
+
+interface TerminalListeners {
+  onData: (data: string) => void
+  onExit: (exitCode: number) => void
+}
+
+function openPty(
+  ptyId: string,
+  init: { cwd?: string; cols: number; rows: number },
+  listeners: TerminalListeners
+): {
+  write: (data: string) => void
+  resize: (cols: number, rows: number) => void
+  close: () => void
+} {
+  const onData = (_e: IpcRendererEvent, p: { ptyId: string; data: string }): void => {
+    if (p.ptyId === ptyId) listeners.onData(p.data)
+  }
+  const onExit = (_e: IpcRendererEvent, p: { ptyId: string; exitCode: number }): void => {
+    if (p.ptyId === ptyId) {
+      listeners.onExit(p.exitCode)
+      ipcRenderer.off('terminal:data', onData)
+      ipcRenderer.off('terminal:exit', onExit)
+    }
+  }
+  ipcRenderer.on('terminal:data', onData)
+  ipcRenderer.on('terminal:exit', onExit)
+  void ipcRenderer.invoke('terminal:open', { ptyId, ...init })
+
+  return {
+    write: (data) => ipcRenderer.send('terminal:write', { ptyId, data }),
+    resize: (cols, rows) => ipcRenderer.send('terminal:resize', { ptyId, cols, rows }),
+    close: () => {
+      ipcRenderer.off('terminal:data', onData)
+      ipcRenderer.off('terminal:exit', onExit)
+      ipcRenderer.send('terminal:close', { ptyId })
+    }
+  }
+}
+
+const api = {
+  openTerminal: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('open-terminal'),
+  revealInFolder: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('reveal-in-folder'),
+  projectCwd: (): Promise<string> => ipcRenderer.invoke('project-cwd'),
+  chat: { start: startChat },
+  terminal: { open: openPty }
+}
+
+export type Api = typeof api
+
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)

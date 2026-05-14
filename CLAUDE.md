@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-QC Codium is Quantum Club's pre-alpha agentic IDE — an Electron desktop app that pairs a Monaco editor with an in-app agent panel. Positioned alongside T3 Code / Codex but with a full IDE surface. The codebase is currently a thin shell: real agent execution, IPC streaming, and IDE features are not yet wired.
+QC Codium is Quantum Club's research-preview agentic IDE — an Electron desktop app with a chat-first home (Codex-style composer) and a Claude-style slide-in sidebar. QC is an AI & research company, so framing is "research preview" not "alpha/beta". Positioned alongside T3 Code / Codex but aiming at a full IDE surface. The codebase is currently a thin shell: real agent execution, IPC streaming, and IDE/editor features are not yet wired.
 
 Repo: `github.com/atomicfield/qc-codium` (private). Working tree lives at `~/Desktop/qc-codium` (was originally scaffolded at `~/projects/qc-codium` and relocated).
 
@@ -14,8 +14,8 @@ Repo: `github.com/atomicfield/qc-codium` (private). Working tree lives at `~/Des
 - **React 19 + TypeScript 5.9**, Vite 7
 - **Tailwind v4** via `@tailwindcss/vite` — `@import "tailwindcss"` + `@import "tw-animate-css"` in `src/renderer/src/assets/main.css`. Two-layer token system: `@theme inline` maps Tailwind utility colors to CSS vars, and `:root` defines those vars. shadcn names (`--background`, `--foreground`, `--primary`, `--card`, `--muted`, etc.) are the canonical token set.
 - **shadcn/ui** (New York style, neutral base) — primitives copied into `src/renderer/src/components/ui/`. `cn()` lives in `@renderer/lib/utils`. `components.json` is at repo root; aliases use the `@renderer/*` namespace.
-- **Monaco** via `@monaco-editor/react` (workers load from CDN by default — switch to bundled workers before shipping offline)
 - **lucide-react** for icons (shadcn's default; never bring in a second icon set).
+- `@monaco-editor/react` is installed but **not currently imported** — Monaco was the original editor surface and will return when the IDE pane is rebuilt. Don't remove the dep without checking in.
 - **Bun** is the package manager. Always use `bun install` / `bun run …`, never npm. `bun.lock` is the source of truth.
 - **electron-builder** for packaging (`electron-builder.yml`, `build/` is `buildResources`)
 
@@ -42,16 +42,20 @@ Three independently-built bundles, defined in `electron.vite.config.ts`:
 
 - **`src/main/`** — Electron main process. `index.ts` creates the `BrowserWindow` (1400×900, `hiddenInset` traffic lights on macOS, pure `#000000` background, frameless-feeling chrome via `autoHideMenuBar` + custom drag region). Loads `ELECTRON_RENDERER_URL` in dev, `../renderer/index.html` in prod. Only an `ipcMain.on('ping')` stub exists today. **Splash is rendered in-app by the renderer**, not as a separate window — do not reintroduce a standalone splash BrowserWindow.
 - **`src/preload/`** — Context-isolated bridge. Exposes `window.electron` (from `@electron-toolkit/preload`) and an empty `window.api` placeholder. Extend `api` here and mirror the type in `index.d.ts` when adding IPC surface.
-- **`src/renderer/src/`** — React app. `@renderer` alias points here. `App.tsx` mounts `<Splash />` as an overlay (z-50, fades out after ~1.4s) over the IDE layout: a draggable header strip + CSS-grid split (`1fr 360px`) of `<Editor />` and `<AgentPanel />`. The agent panel is a **stub** — it fakes replies; there is no model client wired through IPC yet.
+- **`src/renderer/src/`** — React app. `@renderer` alias points here. `App.tsx` is the shell:
+  - `<Toolbar />` — 40px header strip. Draggable empty space + four non-draggable chrome buttons (sidebar toggle, back, forward, new chat) inset by `pl-[88px]` to clear the macOS traffic lights at `{x:14,y:14}`.
+  - `<Home />` — the chat-first welcome screen: centered "What are we building, Colf?" heading, rounded composer with permissions/model pills, project/branch strip, and a list of suggestion rows separated by `bg-white/8` dividers.
+  - `<Sidebar />` — Claude-style slide-in panel (absolute, `w-72`, slides on `translate-x`). Backdrop click + `Escape` close it. Renders the QC mark + nav (New chat / Search / Chats / Projects / Code / Customize / More), a Recents list, and a user row.
+  - `<Splash />` — z-50 overlay that fades out after ~1.4s on first mount.
 
 ### Key invariants when extending
 
 - **Three TypeScript projects, three tsconfigs:** `tsconfig.node.json` covers main + preload, `tsconfig.web.json` covers renderer. `tsconfig.json` is a references root but also carries `compilerOptions.paths` for tooling (shadcn CLI reads it). `bun run typecheck` runs both; CI parity requires both to pass.
-- **Agent / model code belongs in main, not renderer.** API keys must not sit in the renderer bundle. When wiring a real agent: SDK in main → expose a typed `api` surface in preload → renderer calls via `window.api` → stream back over IPC.
+- **Agent / model code belongs in main, not renderer.** API keys must not sit in the renderer bundle. When wiring a real agent: SDK in main → expose a typed `api` surface in preload → renderer calls via `window.api` → stream back over IPC. The composer in `<Home />` currently swallows submissions — that's where the IPC call goes.
 - **Tokens, not raw hex.** Use the shadcn token names (`bg-background`, `text-foreground`, `bg-card`, `bg-primary`, `text-muted-foreground`, etc.). Add new tokens by extending `:root` + `@theme inline` in `main.css` — don't hardcode hex in components.
 - **Black & white theme, no outline borders.** Hard product rule: the palette is strict grayscale (no accent hue), and components must not render visible border lines. `--border` is set to `transparent`; a base layer also forces `border-color: transparent` on every element. When `bunx shadcn@latest add` pulls a new primitive, **immediately review the generated file** and strip `border`, `border-input`, and `aria-invalid:border-destructive` classes from cva variants. For dividers (Separator, ScrollArea thumb) use `bg-white/8` to `bg-white/20` — a subtle gray bar, never a border line.
 - **Splash is in-renderer, not a second window.** `<Splash />` in `App.tsx` overlays the IDE on first render and fades out. Don't reintroduce a separate splash BrowserWindow in `main/index.ts` — that pattern was tried and rejected.
-- **Window chrome:** the top 32px strip in `App.tsx` is the drag region (no native title bar on macOS). Don't put interactive elements there without `WebkitAppRegion: 'no-drag'`. The splash overlay is itself draggable.
+- **Window chrome:** the top 40px strip is the `<Toolbar />` drag region (no native title bar on macOS). Buttons inside it set `WebkitAppRegion: 'no-drag'` individually; the `pl-[88px]` inset reserves space for the macOS traffic lights. The sidebar header also reserves that inset so its close button doesn't sit under the lights. The splash overlay is itself draggable.
 
 ### Adding shadcn components
 
@@ -63,8 +67,10 @@ Components land in `src/renderer/src/components/ui/`. After install, audit for b
 
 ## In-flight work / known follow-ups
 
-- **Monaco workers** load from CDN today (default `@monaco-editor/react` behavior). Switch to Vite-bundled workers before any offline/production push.
-- **Agent panel is a stub** — `components/AgentPanel.tsx` fakes replies. To make it real: AI SDK in main process (API keys never in renderer) → typed surface on `window.api` via preload → stream over IPC.
+- **Composer is not wired.** `<Home />` collects a draft and clears on submit but doesn't call anything. Next: AI SDK in main process (API keys never in renderer) → typed surface on `window.api` via preload → stream over IPC → render messages in a thread view that replaces or augments the welcome screen.
+- **Sidebar nav items are visual.** `New chat`, `Search`, `Chats`, `Projects`, `Code`, `Customize`, and the Recents list are buttons with no handlers. Wire them as routes/state when the chat surface lands.
+- **Toolbar back/forward are disabled placeholders.** No navigation history exists yet — they accept optional handlers from `App.tsx` and dim when unset.
+- **Editor pane is gone for now.** `Editor.tsx` and `AgentPanel.tsx` were removed when the home pivoted to a chat-first surface. Monaco is still in `package.json` for when the IDE pane returns; don't strip it without confirming.
 - **No test runner yet** — when one is needed, ask the user before picking (Vitest is the natural fit given Vite).
 
 ## Branding & icons
