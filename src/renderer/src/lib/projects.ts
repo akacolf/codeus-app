@@ -28,6 +28,9 @@ export function groupChatsByProject(chats: Chat[]): ProjectGroup[] {
   }
   return order.map((key) => ({
     cwd: key,
+    // Ungrouped chats are rendered as their own top-level section in the
+    // sidebar, so the label is only used by consumers (e.g. SearchChatsDialog)
+    // that show a flat list.
     label: key === UNGROUPED ? 'Chats' : folderLabel(key),
     chats: buckets.get(key)!
   }))

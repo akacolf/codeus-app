@@ -4,6 +4,7 @@ import {
   ArrowRight,
   ChevronRight,
   FolderTree,
+  MessageSquare,
   MoreHorizontal,
   PanelLeftOpen,
   Pencil,
@@ -13,7 +14,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@renderer/lib/utils'
 import type { Chat } from '@renderer/lib/chat'
-import { groupChatsByProject } from '@renderer/lib/projects'
+import { UNGROUPED, groupChatsByProject } from '@renderer/lib/projects'
 import { useChatStore } from '@renderer/stores/chatStore'
 import {
   DropdownMenu,
@@ -58,13 +59,35 @@ export function Sidebar({
     return (): void => window.removeEventListener('keydown', onKey)
   }, [open, onClose])
 
-  const groups = useMemo(() => groupChatsByProject(chats), [chats])
+  const allGroups = useMemo(() => groupChatsByProject(chats), [chats])
+  const ungroupedChats = useMemo(
+    () => allGroups.find((g) => g.cwd === UNGROUPED)?.chats ?? [],
+    [allGroups]
+  )
+  const projectGroups = useMemo(() => allGroups.filter((g) => g.cwd !== UNGROUPED), [allGroups])
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [editingId, setEditingId] = useState<string | null>(null)
   const renameChat = useChatStore((s) => s.renameChat)
   const deleteChat = useChatStore((s) => s.deleteChat)
 
   const toggle = (key: string): void => setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }))
+
+  const renderChatRow = (c: Chat): React.JSX.Element => (
+    <ChatRow
+      key={c.id}
+      chat={c}
+      active={c.id === activeChatId}
+      editing={editingId === c.id}
+      onSelect={() => onSelectChat(c.id)}
+      onStartRename={() => setEditingId(c.id)}
+      onCommitRename={(title) => {
+        renameChat(c.id, title)
+        setEditingId(null)
+      }}
+      onCancelRename={() => setEditingId(null)}
+      onDelete={() => deleteChat(c.id)}
+    />
+  )
 
   return (
     <>
@@ -114,55 +137,46 @@ export function Sidebar({
           <NavButton icon={Search} label="Search chats" onClick={onOpenSearch} />
         </nav>
 
-        <div className="mt-4 flex min-h-0 flex-1 flex-col">
-          <div className="flex items-center gap-2 px-5 pb-2 text-xs text-muted-foreground">
-            <FolderTree className="size-3.5" />
-            <span>Projects</span>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-            {groups.length === 0 ? (
-              <div className="px-3 py-1.5 text-sm text-muted-foreground/70">No chats yet</div>
-            ) : (
-              groups.map((g) => {
-                const isCollapsed = collapsed[g.cwd] === true
-                return (
-                  <div key={g.cwd} className="mb-2 last:mb-0">
-                    <button
-                      type="button"
-                      onClick={() => toggle(g.cwd)}
-                      className="flex w-full items-center gap-1.5 rounded-md px-2.5 py-1.5 text-left text-[11px] text-muted-foreground hover:bg-white/5 hover:text-foreground"
-                    >
-                      <ChevronRight
-                        className={cn('size-3 transition-transform', !isCollapsed && 'rotate-90')}
-                      />
-                      <span className="truncate">{g.label}</span>
-                      <span className="ml-auto text-[10px]">{g.chats.length}</span>
-                    </button>
-                    {!isCollapsed && (
-                      <ul className="mt-0.5 pl-2">
-                        {g.chats.map((c) => (
-                          <ChatRow
-                            key={c.id}
-                            chat={c}
-                            active={c.id === activeChatId}
-                            editing={editingId === c.id}
-                            onSelect={() => onSelectChat(c.id)}
-                            onStartRename={() => setEditingId(c.id)}
-                            onCommitRename={(title) => {
-                              renameChat(c.id, title)
-                              setEditingId(null)
-                            }}
-                            onCancelRename={() => setEditingId(null)}
-                            onDelete={() => deleteChat(c.id)}
-                          />
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                )
-              })
-            )}
-          </div>
+        <div className="mt-4 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-3">
+          {ungroupedChats.length === 0 && projectGroups.length === 0 && (
+            <div className="px-5 py-1.5 text-sm text-muted-foreground/70">No chats yet</div>
+          )}
+
+          {projectGroups.length > 0 && (
+            <div className="flex flex-col">
+              <SectionHeader icon={FolderTree} label="Projects" />
+              <div className="mt-0.5 px-2">
+                {projectGroups.map((g) => {
+                  const isCollapsed = collapsed[g.cwd] === true
+                  return (
+                    <div key={g.cwd} className="mb-2 last:mb-0">
+                      <button
+                        type="button"
+                        onClick={() => toggle(g.cwd)}
+                        className="flex w-full items-center gap-1.5 rounded-md px-2.5 py-1.5 text-left text-[11px] text-muted-foreground hover:bg-white/5 hover:text-foreground"
+                      >
+                        <ChevronRight
+                          className={cn('size-3 transition-transform', !isCollapsed && 'rotate-90')}
+                        />
+                        <span className="truncate">{g.label}</span>
+                        <span className="ml-auto text-[10px]">{g.chats.length}</span>
+                      </button>
+                      {!isCollapsed && (
+                        <ul className="mt-0.5 pl-2">{g.chats.map(renderChatRow)}</ul>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {ungroupedChats.length > 0 && (
+            <div className="flex flex-col">
+              <SectionHeader icon={MessageSquare} label="Chats" count={ungroupedChats.length} />
+              <ul className="mt-0.5 px-2">{ungroupedChats.map(renderChatRow)}</ul>
+            </div>
+          )}
         </div>
 
         <div className="flex shrink-0 items-center gap-3 px-3 py-3">
@@ -176,6 +190,24 @@ export function Sidebar({
         </div>
       </aside>
     </>
+  )
+}
+
+function SectionHeader({
+  icon: Icon,
+  label,
+  count
+}: {
+  icon: React.ComponentType<{ className?: string }>
+  label: string
+  count?: number
+}): React.JSX.Element {
+  return (
+    <div className="flex items-center gap-2 px-5 pb-1 text-xs text-muted-foreground">
+      <Icon className="size-3.5" />
+      <span>{label}</span>
+      {count !== undefined && <span className="ml-auto text-[10px]">{count}</span>}
+    </div>
   )
 }
 
