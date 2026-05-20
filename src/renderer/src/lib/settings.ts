@@ -26,7 +26,7 @@ const DEFAULTS: Settings = {
   model: 'opus-4.7'
 }
 
-const KEY = 'qc-codium.settings.v1'
+const KEY = 'qc-codeus.settings.v1'
 
 function read(): Settings {
   if (typeof window === 'undefined') return DEFAULTS

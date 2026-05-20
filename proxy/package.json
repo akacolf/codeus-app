@@ -1,5 +1,5 @@
 {
-  "name": "qc-codium-proxy",
+  "name": "qc-codeus-proxy",
   "version": "0.1.0",
   "private": true,
   "description": "Quantum Club credit proxy — Anthropic-compatible /v1/messages forwarder",

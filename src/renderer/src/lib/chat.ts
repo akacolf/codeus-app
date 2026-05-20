@@ -17,7 +17,7 @@ export interface Chat {
   error?: string
 }
 
-export type View = { type: 'home' } | { type: 'chat'; chatId: string }
+export type View = { type: 'home' } | { type: 'chat'; chatId: string } | { type: 'editor' }
 
 export function genId(): string {
   return Math.random().toString(36).slice(2, 10)
@@ -28,7 +28,7 @@ export function deriveTitle(text: string): string {
   return t.length > 40 ? t.slice(0, 40) + '…' : t
 }
 
-const STORAGE_KEY = 'qc-codium.chats.v1'
+const STORAGE_KEY = 'qc-codeus.chats.v1'
 const MAX_PERSISTED = 50
 
 export function loadChats(): Chat[] {

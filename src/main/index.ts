@@ -5,6 +5,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { registerChatIpc } from './chat'
+import { registerFsIpc } from './fs'
 import { killAllPtys, registerTerminalIpc } from './terminal'
 
 interface WindowState {
@@ -179,7 +180,7 @@ function createWindow(): void {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
-  electronApp.setAppUserModelId('club.quantum.qccodium')
+  electronApp.setAppUserModelId('club.quantum.qccodeus')
 
   if (process.platform === 'darwin' && app.dock) {
     app.dock.setIcon(nativeImage.createFromPath(icon))
@@ -196,6 +197,7 @@ app.whenReady().then(() => {
   ipcMain.handle('reveal-in-folder', () => revealInFolder())
   ipcMain.handle('project-cwd', () => projectCwd())
   registerChatIpc()
+  registerFsIpc(projectCwd)
   registerTerminalIpc(projectCwd)
 
   createWindow()

@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   ArrowRight,
   ChevronDown,
+  Code,
   FolderOpen,
   Info,
   Keyboard,
@@ -32,6 +33,8 @@ interface ToolbarProps {
   onBack?: () => void
   onForward?: () => void
   onCompose?: () => void
+  onOpenEditor?: () => void
+  editorActive?: boolean
   onOpenTerminal?: () => void
   onRevealInFolder?: () => void
   onOpenSettings?: () => void
@@ -46,6 +49,8 @@ export function Toolbar({
   onBack,
   onForward,
   onCompose,
+  onOpenEditor,
+  editorActive,
   onOpenTerminal,
   onRevealInFolder,
   onOpenSettings,
@@ -73,6 +78,14 @@ export function Toolbar({
       <ChromeButton label="New chat" onClick={onCompose} disabled={!onCompose}>
         <SquarePen />
       </ChromeButton>
+      <ChromeButton
+        label="Open editor"
+        active={editorActive}
+        onClick={onOpenEditor}
+        disabled={!onOpenEditor}
+      >
+        <Code />
+      </ChromeButton>
 
       <div className="flex-1" />
 
@@ -84,7 +97,7 @@ export function Toolbar({
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            aria-label="QC Codium menu"
+            aria-label="QC Codeus menu"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-muted-foreground transition-colors hover:bg-white/8 hover:text-foreground data-[state=open]:bg-white/8 data-[state=open]:text-foreground"
           >
@@ -93,7 +106,7 @@ export function Toolbar({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" sideOffset={6} className="w-64">
-          <DropdownMenuLabel className="text-muted-foreground">QC Codium</DropdownMenuLabel>
+          <DropdownMenuLabel className="text-muted-foreground">QC Codeus</DropdownMenuLabel>
 
           <DropdownMenuItem onSelect={() => onOpenTerminal?.()} disabled={!onOpenTerminal}>
             <Terminal />
@@ -123,7 +136,7 @@ export function Toolbar({
 
           <DropdownMenuItem onSelect={() => onOpenAbout?.()} disabled={!onOpenAbout}>
             <Info />
-            <span>About QC Codium</span>
+            <span>About QC Codeus</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

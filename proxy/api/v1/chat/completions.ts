@@ -1,4 +1,4 @@
-// QC Codium credit proxy — OpenAI-compatible /v1/chat/completions endpoint.
+// QC Codeus credit proxy — OpenAI-compatible /v1/chat/completions endpoint.
 //
 // The Electron client uses @ai-sdk/openai-compatible pointed at
 // `${QC_PROXY_BASE_URL}/chat/completions`. This function forwards transparently
@@ -10,9 +10,9 @@
 //   2. cp .env.example .env.local — fill OPENROUTER_API_KEY (or leave
 //      QC_MOCK_UPSTREAM=true to stream canned replies for free)
 //   3. bun run dev   (binds on :3000)
-//   4. In QC Codium: launch with QC_PROXY_BASE_URL=http://localhost:3000/v1
+//   4. In QC Codeus: launch with QC_PROXY_BASE_URL=http://localhost:3000/v1
 //
-// Production: deploy to Vercel, point api.qccodium.com → this project, set
+// Production: deploy to Vercel, point api.quantumclub.sh → this project, set
 // OPENROUTER_API_KEY in env. Replace the placeholder auth gate with real
 // QC sessions + per-token credit metering.
 

@@ -82,6 +82,23 @@ function openPty(
   }
 }
 
+export interface DirEntry {
+  name: string
+  path: string
+  type: 'file' | 'dir'
+}
+
+export type FsListResult = { ok: true; entries: DirEntry[] } | { ok: false; error: string }
+export type FsReadResult = { ok: true; content: string } | { ok: false; error: string }
+export type FsWriteResult = { ok: true } | { ok: false; error: string }
+
+const fsBridge = {
+  listDir: (path?: string): Promise<FsListResult> => ipcRenderer.invoke('fs:listDir', { path }),
+  readFile: (path: string): Promise<FsReadResult> => ipcRenderer.invoke('fs:readFile', { path }),
+  writeFile: (path: string, content: string): Promise<FsWriteResult> =>
+    ipcRenderer.invoke('fs:writeFile', { path, content })
+}
+
 export interface ChromeState {
   fullscreen: boolean
   maximized: boolean
@@ -101,6 +118,7 @@ const api = {
   projectCwd: (): Promise<string> => ipcRenderer.invoke('project-cwd'),
   onChromeState,
   chat: { start: startChat },
+  fs: fsBridge,
   terminal: { open: openPty }
 }
 

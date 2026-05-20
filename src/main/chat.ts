@@ -28,7 +28,10 @@ const MODEL_MAP: Record<string, string> = {
   'haiku-4.5': 'anthropic/claude-haiku-4.5'
 }
 
-const QC_PROXY_BASE_URL = process.env.QC_PROXY_BASE_URL || 'https://api.qccodium.com/v1'
+// Production default points at the shared Quantum Club API host. Needs DNS +
+// a Vercel alias on the `proxy/` deployment before it'll resolve. Local dev
+// sets `QC_PROXY_BASE_URL=http://localhost:3000/v1`.
+const QC_PROXY_BASE_URL = process.env.QC_PROXY_BASE_URL || 'https://api.quantumclub.sh/v1'
 
 const inFlight = new Map<string, AbortController>()
 

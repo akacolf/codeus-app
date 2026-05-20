@@ -101,7 +101,7 @@ export function Composer({ onSubmit, placeholder, autoFocus }: ComposerProps): R
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={onKey}
-        placeholder={placeholder ?? 'Ask QC Codium anything.  @ to use plugins or mention files'}
+        placeholder={placeholder ?? 'Ask QC Codeus anything.  @ to use plugins or mention files'}
         rows={2}
         className="block w-full resize-none bg-transparent px-5 pt-4 pb-1 text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
       />

@@ -1,4 +1,4 @@
-import { Fragment, forwardRef, useState } from 'react'
+import { Fragment, forwardRef, useEffect, useState } from 'react'
 import {
   ChevronDown,
   Cloud,
@@ -44,8 +44,26 @@ interface HomeProps {
   onReveal?: () => void
 }
 
+function basename(path: string): string {
+  const trimmed = path.replace(/[/\\]+$/, '')
+  const idx = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'))
+  return idx === -1 ? trimmed : trimmed.slice(idx + 1)
+}
+
+function tildeify(path: string): string {
+  return path.replace(/^\/Users\/[^/]+/, '~').replace(/^\/home\/[^/]+/, '~')
+}
+
 export function Home({ onSubmit, onOpenTerminal, onReveal }: HomeProps): React.JSX.Element {
   const [greetingIdx] = useState(() => Math.floor(Math.random() * GREETING_COUNT))
+  const [projectPath, setProjectPath] = useState<string | null>(null)
+
+  useEffect(() => {
+    void window.api.projectCwd().then(setProjectPath)
+  }, [])
+
+  const projectName = projectPath ? basename(projectPath) : '…'
+  const projectDisplay = projectPath ? tildeify(projectPath) : ''
 
   return (
     <div className="flex h-full w-full items-center justify-center px-6">
@@ -61,7 +79,7 @@ export function Home({ onSubmit, onOpenTerminal, onReveal }: HomeProps): React.J
             <DropdownMenuTrigger asChild>
               <ChipButton>
                 <FolderOpen className="size-3.5" />
-                qc-codium
+                {projectName}
                 <ChevronDown className="size-3 opacity-60" />
               </ChipButton>
             </DropdownMenuTrigger>
@@ -69,7 +87,7 @@ export function Home({ onSubmit, onOpenTerminal, onReveal }: HomeProps): React.J
               <DropdownMenuLabel className="text-muted-foreground">Project root</DropdownMenuLabel>
               <DropdownMenuItem disabled>
                 <FolderOpen />
-                <span className="truncate">~/Desktop/qc-codium</span>
+                <span className="truncate">{projectDisplay}</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => onReveal?.()} disabled={!onReveal}>

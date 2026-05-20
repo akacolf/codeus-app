@@ -1,10 +1,10 @@
 {
-  "name": "qc-codium",
+  "name": "qc-codeus",
   "version": "0.1.0",
-  "description": "QC Codium — Quantum Club's next-gen agentic development platform merged with IDE experiences.",
+  "description": "QC Codeus — Quantum Club's next-gen agentic development platform merged with IDE experiences.",
   "main": "./out/main/index.js",
   "author": "Quantum Club",
-  "homepage": "https://github.com/atomicfield/qc-codium",
+  "homepage": "https://github.com/atomicfield/qc-codeus",
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",

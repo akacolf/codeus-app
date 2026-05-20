@@ -1,10 +1,10 @@
-# QC Codium
+# QC Codeus
 
-QC Codium is **Quantum Club**'s next-gen agentic development platform — an IDE
+QC Codeus is **Quantum Club**'s next-gen agentic development platform — an IDE
 experience deeply merged with autonomous coding agents. Think of it as the
 ground where products like T3 Code or Codex meet a full IDE surface.
 
-> Status: pre-alpha scaffold. Electron + Vite + React + TypeScript shell only.
+> Status: research preview. Electron + Vite + React + TypeScript shell with chat streaming, in-app terminal, and a Monaco-backed editor pane.
 
 ## Stack
 

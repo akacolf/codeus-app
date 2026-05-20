@@ -39,10 +39,10 @@ interface Tab {
   id: string
 }
 
-const DEFAULT_HEIGHT = 288
+const DEFAULT_HEIGHT = 200
 const MIN_HEIGHT = 120
 const TOP_RESERVED = 40 // toolbar height — fullscreen fills everything below it
-const HEIGHT_KEY = 'qc-codium.terminal.height.v1'
+const HEIGHT_KEY = 'qc-codeus.terminal.height.v2'
 
 function readSavedHeight(): number {
   if (typeof window === 'undefined') return DEFAULT_HEIGHT

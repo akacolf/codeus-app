@@ -8,6 +8,7 @@ import { Splash } from './components/Splash'
 import { TerminalPanel } from './components/TerminalPanel'
 import { Thread } from './components/Thread'
 import { Toolbar } from './components/Toolbar'
+import { Workspace } from './components/Workspace'
 import {
   Dialog,
   DialogContent,
@@ -47,11 +48,13 @@ function App(): React.JSX.Element {
   const back = useChatStore((s) => s.back)
   const forward = useChatStore((s) => s.forward)
   const newChat = useChatStore((s) => s.newChat)
+  const openEditor = useChatStore((s) => s.openEditor)
   const selectChat = useChatStore((s) => s.selectChat)
   const sendMessageAction = useChatStore((s) => s.sendMessage)
   const stopStreaming = useChatStore((s) => s.stopStreaming)
 
   const activeChat = view.type === 'chat' ? (chats.find((c) => c.id === view.chatId) ?? null) : null
+  const isEditor = view.type === 'editor'
 
   const sendMessage = useCallback(
     (text: string) => sendMessageAction(text, { model: settings.model, projectCwd }),
@@ -110,6 +113,8 @@ function App(): React.JSX.Element {
         onBack={canBack ? back : undefined}
         onForward={canForward ? forward : undefined}
         onCompose={view.type === 'home' ? undefined : newChat}
+        onOpenEditor={isEditor ? undefined : openEditor}
+        editorActive={isEditor}
         onOpenTerminal={() => setTerminalOpen((v) => !v)}
         onRevealInFolder={revealInFolder}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -117,7 +122,9 @@ function App(): React.JSX.Element {
         onOpenAbout={() => setAboutOpen(true)}
       />
       <main className="min-h-0 flex-1">
-        {activeChat ? (
+        {isEditor ? (
+          <Workspace />
+        ) : activeChat ? (
           <Thread chat={activeChat} onSubmit={sendMessage} onStop={stopStreaming} />
         ) : (
           <Home
@@ -162,7 +169,7 @@ function App(): React.JSX.Element {
       <Dialog open={aboutOpen} onOpenChange={setAboutOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>About QC Codium</DialogTitle>
+            <DialogTitle>About QC Codeus</DialogTitle>
             <DialogDescription>Quantum Club’s research-preview agentic IDE.</DialogDescription>
           </DialogHeader>
           <p className="text-sm leading-relaxed text-foreground/85">

@@ -18,6 +18,7 @@ interface ChatStore {
   back: () => void
   forward: () => void
   newChat: () => void
+  openEditor: () => void
   selectChat: (id: string) => void
   renameChat: (id: string, title: string) => void
   deleteChat: (id: string) => void
@@ -48,6 +49,15 @@ export const useChatStore = create<ChatStore>()(
       if (history[index].type === 'home') return
       set({
         history: [...history.slice(0, index + 1), { type: 'home' }],
+        index: index + 1
+      })
+    },
+
+    openEditor: () => {
+      const { history, index } = get()
+      if (history[index].type === 'editor') return
+      set({
+        history: [...history.slice(0, index + 1), { type: 'editor' }],
         index: index + 1
       })
     },
@@ -103,7 +113,17 @@ export const useChatStore = create<ChatStore>()(
       let chatId: string
       let nextHistory: Message[]
 
-      if (view.type === 'home') {
+      if (view.type === 'chat') {
+        chatId = view.chatId
+        const existing = chats.find((c) => c.id === chatId)
+        nextHistory = [...(existing?.messages ?? []), userMsg]
+        set({
+          chats: chats.map((c) =>
+            c.id === chatId ? { ...c, messages: nextHistory, error: undefined } : c
+          )
+        })
+      } else {
+        // home or editor — start a fresh chat and navigate to it.
         const chat: Chat = {
           id: genId(),
           title: deriveTitle(trimmed),
@@ -117,15 +137,6 @@ export const useChatStore = create<ChatStore>()(
           chats: [chat, ...chats],
           history: [...history.slice(0, index + 1), { type: 'chat', chatId: chat.id }],
           index: index + 1
-        })
-      } else {
-        chatId = view.chatId
-        const existing = chats.find((c) => c.id === chatId)
-        nextHistory = [...(existing?.messages ?? []), userMsg]
-        set({
-          chats: chats.map((c) =>
-            c.id === chatId ? { ...c, messages: nextHistory, error: undefined } : c
-          )
         })
       }
 

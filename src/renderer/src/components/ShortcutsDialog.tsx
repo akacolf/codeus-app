@@ -19,7 +19,7 @@ export function ShortcutsDialog({ open, onOpenChange }: ShortcutsDialogProps): R
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Keyboard shortcuts</DialogTitle>
-          <DialogDescription>The keys QC Codium responds to today.</DialogDescription>
+          <DialogDescription>The keys QC Codeus responds to today.</DialogDescription>
         </DialogHeader>
 
         <ul className="flex flex-col divide-y divide-white/5">
