@@ -20,8 +20,8 @@ const CancelParamsSchema = z.object({ requestId: z.string().min(1) })
 
 type StartParams = z.infer<typeof StartParamsSchema>
 
-// OpenRouter slugs. Adjust if a model is renamed upstream — see
-// https://openrouter.ai/models for the current list.
+// Vercel AI Gateway model IDs (provider/model format). Adjust if a model is
+// renamed upstream — see https://vercel.com/ai-gateway/models for the current list.
 const MODEL_MAP: Record<string, string> = {
   'opus-4.7': 'anthropic/claude-opus-4.7',
   'sonnet-4.6': 'anthropic/claude-sonnet-4.6',
@@ -46,7 +46,7 @@ async function runStream(wc: WebContents, params: StartParams): Promise<void> {
 
   try {
     // The proxy authenticates the caller server-side and uses its own
-    // OpenRouter key upstream. The client doesn't need a token — pass a
+    // AI Gateway key upstream. The client doesn't need a token — pass a
     // placeholder so @ai-sdk/openai-compatible doesn't throw on construction.
     const provider = createOpenAICompatible({
       name: 'qc',

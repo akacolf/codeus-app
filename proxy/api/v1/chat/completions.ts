@@ -1,24 +1,26 @@
 // QC Codeus credit proxy — OpenAI-compatible /v1/chat/completions endpoint.
 //
+// NOTE: production now lives in the `quantum-club-website` repo at
+// `src/app/api/codeus/v1/chat/completions/route.ts`, deployed to Vercel and
+// served at https://api.quantumclub.sh/v1. This workspace is retained for
+// optional local dev against an isolated proxy; the website's `npm run dev`
+// also serves the same route at http://localhost:3000/api/codeus/v1.
+//
 // The Electron client uses @ai-sdk/openai-compatible pointed at
 // `${QC_PROXY_BASE_URL}/chat/completions`. This function forwards transparently
-// to OpenRouter (https://openrouter.ai) using QC's own OPENROUTER_API_KEY.
-// OpenRouter speaks OpenAI's chat-completions format, so no translation needed.
+// to Vercel AI Gateway (https://ai-gateway.vercel.sh) using AI_GATEWAY_API_KEY.
+// AI Gateway speaks OpenAI's chat-completions format, so no translation needed.
 //
 // Setup:
 //   1. cd proxy && bun install
-//   2. cp .env.example .env.local — fill OPENROUTER_API_KEY (or leave
+//   2. cp .env.example .env.local — fill AI_GATEWAY_API_KEY (or leave
 //      QC_MOCK_UPSTREAM=true to stream canned replies for free)
 //   3. bun run dev   (binds on :3000)
 //   4. In QC Codeus: launch with QC_PROXY_BASE_URL=http://localhost:3000/v1
-//
-// Production: deploy to Vercel, point api.quantumclub.sh → this project, set
-// OPENROUTER_API_KEY in env. Replace the placeholder auth gate with real
-// QC sessions + per-token credit metering.
 
 export const config = { runtime: 'edge' }
 
-const OPENROUTER_UPSTREAM = 'https://openrouter.ai/api/v1/chat/completions'
+const AI_GATEWAY_UPSTREAM = 'https://ai-gateway.vercel.sh/v1/chat/completions'
 
 function jsonError(status: number, message: string, type = 'invalid_request_error'): Response {
   return new Response(JSON.stringify({ error: { type, message } }), {
@@ -28,7 +30,7 @@ function jsonError(status: number, message: string, type = 'invalid_request_erro
 }
 
 const MOCK_REPLY =
-  'Hi from the QC proxy mock upstream. The pipeline is wired end-to-end — your client sent OpenAI chat-completions, the proxy authorized the request, and this canned SSE stream is being parsed by @ai-sdk/openai-compatible in the main process. Flip QC_MOCK_UPSTREAM off and fund OPENROUTER_API_KEY to switch to real generation.'
+  'Hi from the QC proxy mock upstream. The pipeline is wired end-to-end — your client sent OpenAI chat-completions, the proxy authorized the request, and this canned SSE stream is being parsed by @ai-sdk/openai-compatible in the main process. Flip QC_MOCK_UPSTREAM off and set AI_GATEWAY_API_KEY to switch to real generation.'
 
 function sseLine(data: object): string {
   return `data: ${JSON.stringify(data)}\n\n`
@@ -104,8 +106,8 @@ export default async function handler(req: Request): Promise<Response> {
     return mockOpenAIStream(model)
   }
 
-  const upstreamKey = process.env.OPENROUTER_API_KEY
-  if (!upstreamKey) return jsonError(500, 'Proxy missing OPENROUTER_API_KEY', 'api_error')
+  const upstreamKey = process.env.AI_GATEWAY_API_KEY
+  if (!upstreamKey) return jsonError(500, 'Proxy missing AI_GATEWAY_API_KEY', 'api_error')
 
   const fwd = new Headers()
   const passthrough = ['content-type', 'accept']
@@ -114,11 +116,8 @@ export default async function handler(req: Request): Promise<Response> {
     if (v) fwd.set(name, v)
   }
   fwd.set('authorization', `Bearer ${upstreamKey}`)
-  // OpenRouter likes these for analytics + rate-limit class.
-  if (process.env.OPENROUTER_REFERER) fwd.set('http-referer', process.env.OPENROUTER_REFERER)
-  if (process.env.OPENROUTER_TITLE) fwd.set('x-title', process.env.OPENROUTER_TITLE)
 
-  const upstream = await fetch(OPENROUTER_UPSTREAM, {
+  const upstream = await fetch(AI_GATEWAY_UPSTREAM, {
     method: 'POST',
     headers: fwd,
     body: req.body,
