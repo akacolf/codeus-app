@@ -38,8 +38,7 @@ const QC_PROXY_BASE_URL = process.env.QC_PROXY_BASE_URL || 'https://api.quantumc
 // from the asar bundle), but blocks anonymous abuse of the proxy URL. Rotate
 // + reship when leaks are suspected. Real per-user auth replaces this later.
 const QC_CLIENT_TOKEN =
-  process.env.QC_CLIENT_TOKEN ||
-  '08606d51e72936e8dc17d6dcd0481d2a5a0d97b0c825851b5189b2b95be91c06'
+  process.env.QC_CLIENT_TOKEN || '08606d51e72936e8dc17d6dcd0481d2a5a0d97b0c825851b5189b2b95be91c06'
 
 const inFlight = new Map<string, AbortController>()
 

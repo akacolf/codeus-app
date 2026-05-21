@@ -112,6 +112,30 @@ function onChromeState(cb: (s: ChromeState) => void): () => void {
   }
 }
 
+export type UpdaterState =
+  | { kind: 'idle' }
+  | { kind: 'checking' }
+  | { kind: 'available'; version: string }
+  | { kind: 'not-available' }
+  | { kind: 'downloading'; percent: number }
+  | { kind: 'ready'; version: string }
+  | { kind: 'error'; message: string }
+
+function onUpdaterState(cb: (s: UpdaterState) => void): () => void {
+  const handler = (_e: IpcRendererEvent, s: UpdaterState): void => cb(s)
+  ipcRenderer.on('updater:state', handler)
+  return (): void => {
+    ipcRenderer.off('updater:state', handler)
+  }
+}
+
+const updaterBridge = {
+  getState: (): Promise<UpdaterState> => ipcRenderer.invoke('updater:getState'),
+  check: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('updater:check'),
+  quitAndInstall: (): Promise<{ ok: true }> => ipcRenderer.invoke('updater:quitAndInstall'),
+  onState: onUpdaterState
+}
+
 const api = {
   openTerminal: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('open-terminal'),
   revealInFolder: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('reveal-in-folder'),
@@ -119,7 +143,8 @@ const api = {
   onChromeState,
   chat: { start: startChat },
   fs: fsBridge,
-  terminal: { open: openPty }
+  terminal: { open: openPty },
+  updater: updaterBridge
 }
 
 export type Api = typeof api

@@ -7,6 +7,7 @@ import icon from '../../resources/icon.png?asset'
 import { registerChatIpc } from './chat'
 import { registerFsIpc } from './fs'
 import { killAllPtys, registerTerminalIpc } from './terminal'
+import { registerUpdater } from './updater'
 
 interface WindowState {
   x?: number
@@ -199,6 +200,7 @@ app.whenReady().then(() => {
   registerChatIpc()
   registerFsIpc(projectCwd)
   registerTerminalIpc(projectCwd)
+  registerUpdater()
 
   createWindow()
 

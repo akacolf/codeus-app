@@ -26,6 +26,11 @@ mac:
     - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
   notarize: false
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
 dmg:
   artifactName: qc-codeus-mac-${arch}.${ext}
 linux:
@@ -39,4 +44,6 @@ appImage:
 npmRebuild: false
 publish:
   provider: generic
-  url: https://example.com/auto-updates
+  url: https://quantumclub.sh/codeus/dl/
+  channel: latest
+  useMultipleRangeRequest: false

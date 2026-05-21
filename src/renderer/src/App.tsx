@@ -8,6 +8,7 @@ import { Splash } from './components/Splash'
 import { TerminalPanel } from './components/TerminalPanel'
 import { Thread } from './components/Thread'
 import { Toolbar } from './components/Toolbar'
+import { UpdateBanner } from './components/UpdateBanner'
 import { Workspace } from './components/Workspace'
 import {
   Dialog,
@@ -178,6 +179,8 @@ function App(): React.JSX.Element {
           </p>
         </DialogContent>
       </Dialog>
+
+      <UpdateBanner />
 
       {booting && <Splash onDone={() => setBooting(false)} />}
     </div>
