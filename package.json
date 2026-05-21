@@ -1,6 +1,6 @@
 {
   "name": "qc-codeus",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "QC Codeus — Quantum Club's next-gen agentic development platform merged with IDE experiences.",
   "main": "./out/main/index.js",
   "author": "Quantum Club",
@@ -17,9 +17,9 @@
     "postinstall": "electron-builder install-app-deps && bun run scripts/fix-node-pty-perms.ts",
     "icons": "bun run scripts/build-icon.ts",
     "build:unpack": "npm run build && electron-builder --dir",
-    "build:win": "npm run build && electron-builder --win",
-    "build:mac": "electron-vite build && electron-builder --mac",
-    "build:linux": "electron-vite build && electron-builder --linux"
+    "build:win": "npm run build && electron-builder --win --publish never",
+    "build:mac": "electron-vite build && electron-builder --mac --x64 --arm64 --publish never",
+    "build:linux": "electron-vite build && electron-builder --linux --publish never"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^2.0.47",
