@@ -25,10 +25,12 @@ type StartParams = z.infer<typeof StartParamsSchema>
 
 // Vercel AI Gateway model IDs (provider/model format). Adjust if a model is
 // renamed upstream — see https://vercel.com/ai-gateway/models for the current list.
+// Lineup is biased toward cheap-but-capable models for the research preview.
 const MODEL_MAP: Record<string, string> = {
-  'opus-4.7': 'anthropic/claude-opus-4.7',
   'sonnet-4.6': 'anthropic/claude-sonnet-4.6',
-  'haiku-4.5': 'anthropic/claude-haiku-4.5'
+  'haiku-4.5': 'anthropic/claude-haiku-4.5',
+  'gemini-2.5-flash': 'google/gemini-2.5-flash',
+  'gpt-5-mini': 'openai/gpt-5-mini'
 }
 
 const QC_PROXY_BASE_URL = process.env.QC_PROXY_BASE_URL || 'https://api.quantumclub.sh/v1'

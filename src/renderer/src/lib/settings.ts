@@ -8,10 +8,14 @@ export const PERMISSIONS = [
 
 export type PermissionId = (typeof PERMISSIONS)[number]['id']
 
+// Research-preview lineup tuned for cost per quality. Opus was dropped — its
+// agentic gains over Sonnet 4.6 don't justify ~5× the spend for everyday IDE
+// work. Add Opus back if/when a "premium" tier is worth offering.
 export const MODELS = [
-  { id: 'opus-4.7', label: 'Opus 4.7', hint: 'Strongest reasoning' },
-  { id: 'sonnet-4.6', label: 'Sonnet 4.6', hint: 'Balanced everyday' },
-  { id: 'haiku-4.5', label: 'Haiku 4.5', hint: 'Fastest, cheapest' }
+  { id: 'sonnet-4.6', label: 'Sonnet 4.6', hint: 'Balanced default' },
+  { id: 'haiku-4.5', label: 'Haiku 4.5', hint: 'Fastest, cheapest Claude' },
+  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', hint: 'Very cheap, very fast' },
+  { id: 'gpt-5-mini', label: 'GPT-5 mini', hint: 'OpenAI cheap tier' }
 ] as const
 
 export type ModelId = (typeof MODELS)[number]['id']
@@ -27,7 +31,7 @@ interface Settings {
 
 const DEFAULTS: Settings = {
   permission: 'default',
-  model: 'opus-4.7',
+  model: 'sonnet-4.6',
   userName: '',
   runtimeMode: 'local'
 }
@@ -39,7 +43,11 @@ function read(): Settings {
   try {
     const raw = window.localStorage.getItem(KEY)
     if (!raw) return DEFAULTS
-    return { ...DEFAULTS, ...(JSON.parse(raw) as Partial<Settings>) }
+    const merged = { ...DEFAULTS, ...(JSON.parse(raw) as Partial<Settings>) }
+    // Drop stale model ids (e.g., `opus-4.7` after lineup changes) so the
+    // composer doesn't render an empty pill on launch.
+    if (!MODELS.some((m) => m.id === merged.model)) merged.model = DEFAULTS.model
+    return merged
   } catch {
     return DEFAULTS
   }
