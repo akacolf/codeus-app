@@ -11,6 +11,10 @@ export type UpdaterState =
   | { kind: 'error'; message: string }
 
 let currentState: UpdaterState = { kind: 'idle' }
+// True only while a user-initiated check is in flight. Background polls run
+// silently — any error/checking transitions during them are swallowed so the
+// banner doesn't fire on app launch when no update feed is reachable.
+let userInitiated = false
 
 function broadcast(state: UpdaterState): void {
   currentState = state
@@ -26,27 +30,38 @@ export function registerUpdater(): void {
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
 
-  autoUpdater.on('checking-for-update', () => broadcast({ kind: 'checking' }))
+  autoUpdater.on('checking-for-update', () => {
+    if (userInitiated) broadcast({ kind: 'checking' })
+  })
   autoUpdater.on('update-available', (info: UpdateInfo) =>
     broadcast({ kind: 'available', version: info.version })
   )
-  autoUpdater.on('update-not-available', () => broadcast({ kind: 'not-available' }))
+  autoUpdater.on('update-not-available', () => {
+    if (userInitiated) broadcast({ kind: 'not-available' })
+    userInitiated = false
+  })
   autoUpdater.on('download-progress', (p: ProgressInfo) =>
     broadcast({ kind: 'downloading', percent: Math.round(p.percent) })
   )
-  autoUpdater.on('update-downloaded', (info: UpdateInfo) =>
+  autoUpdater.on('update-downloaded', (info: UpdateInfo) => {
     broadcast({ kind: 'ready', version: info.version })
-  )
-  autoUpdater.on('error', (err: Error) =>
-    broadcast({ kind: 'error', message: err?.message ?? String(err) })
-  )
+    userInitiated = false
+  })
+  autoUpdater.on('error', (err: Error) => {
+    if (userInitiated) {
+      broadcast({ kind: 'error', message: err?.message ?? String(err) })
+    }
+    userInitiated = false
+  })
 
   ipcMain.handle('updater:getState', () => currentState)
   ipcMain.handle('updater:check', async () => {
+    userInitiated = true
     try {
       await autoUpdater.checkForUpdates()
       return { ok: true }
     } catch (err) {
+      userInitiated = false
       return { ok: false, error: (err as Error).message }
     }
   })
@@ -55,7 +70,8 @@ export function registerUpdater(): void {
     return { ok: true }
   })
 
-  // Kick off an initial check shortly after launch, then poll every 6h.
+  // Silent background poll: initial check ~10s after launch, then every 6h.
+  // `userInitiated` stays false so failures don't surface a banner.
   setTimeout(() => {
     void autoUpdater.checkForUpdates().catch(() => undefined)
   }, 10_000)

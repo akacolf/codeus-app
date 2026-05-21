@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { GitPanel } from './components/GitPanel'
 import { Home } from './components/Home'
 import { SearchChatsDialog } from './components/SearchChatsDialog'
-import { SettingsDialog } from './components/SettingsDialog'
+import { SettingsPage } from './components/SettingsDialog'
 import { ShortcutsDialog } from './components/ShortcutsDialog'
 import { Sidebar } from './components/Sidebar'
 import { Splash } from './components/Splash'
@@ -33,7 +33,6 @@ function App(): React.JSX.Element {
   const [booting, setBooting] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
   const [connectOpen, setConnectOpen] = useState(false)
@@ -57,11 +56,15 @@ function App(): React.JSX.Element {
   const forward = useChatStore((s) => s.forward)
   const newChat = useChatStore((s) => s.newChat)
   const openEditor = useChatStore((s) => s.openEditor)
+  const closeEditor = useChatStore((s) => s.closeEditor)
+  const openSettings = useChatStore((s) => s.openSettings)
+  const closeSettings = useChatStore((s) => s.closeSettings)
   const selectChat = useChatStore((s) => s.selectChat)
   const sendMessageAction = useChatStore((s) => s.sendMessage)
 
   const activeChat = view.type === 'chat' ? (chats.find((c) => c.id === view.chatId) ?? null) : null
   const isEditor = view.type === 'editor'
+  const isSettings = view.type === 'settings'
 
   const sendMessage = useCallback(
     (text: string) => sendMessageAction(text, { model: settings.model, projectCwd }),
@@ -125,7 +128,7 @@ function App(): React.JSX.Element {
 
       if (matchShortcut(e, { key: ',', mod: true })) {
         e.preventDefault()
-        setSettingsOpen(true)
+        openSettings()
       } else if (matchShortcut(e, { key: '/', mod: true })) {
         e.preventDefault()
         setShortcutsOpen(true)
@@ -148,7 +151,7 @@ function App(): React.JSX.Element {
     }
     window.addEventListener('keydown', onKey)
     return (): void => window.removeEventListener('keydown', onKey)
-  }, [newChat])
+  }, [newChat, openSettings])
 
   const trafficLightInset = IS_MAC && !chrome.fullscreen
 
@@ -161,18 +164,17 @@ function App(): React.JSX.Element {
         onBack={canBack ? back : undefined}
         onForward={canForward ? forward : undefined}
         onCompose={view.type === 'home' ? undefined : newChat}
-        onOpenEditor={isEditor ? undefined : openEditor}
+        onOpenEditor={isEditor ? closeEditor : openEditor}
         editorActive={isEditor}
         onOpenTerminal={() => setTerminalOpen((v) => !v)}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={isSettings ? closeSettings : openSettings}
         onOpenShortcuts={() => setShortcutsOpen(true)}
         onOpenAbout={() => setAboutOpen(true)}
-        onOpenGit={() => setGitOpen(true)}
-        branchLabel={gitInfo?.branch ?? null}
-        dirtyCount={gitInfo?.dirtyCount ?? 0}
       />
       <main className="min-h-0 flex-1">
-        {isEditor ? (
+        {isSettings ? (
+          <SettingsPage />
+        ) : isEditor ? (
           <Workspace />
         ) : activeChat ? (
           <Thread
@@ -191,6 +193,8 @@ function App(): React.JSX.Element {
             onReveal={revealInFolder}
             onOpenConnectTool={() => setConnectOpen(true)}
             onOpenGit={() => setGitOpen(true)}
+            branch={gitInfo?.branch ?? null}
+            dirtyCount={gitInfo?.dirtyCount ?? 0}
           />
         )}
         <TerminalPanel open={terminalOpen} onClose={() => setTerminalOpen(false)} />
@@ -223,7 +227,6 @@ function App(): React.JSX.Element {
         onSelectChat={(id) => selectChat(id)}
       />
 
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
 
       <Dialog open={aboutOpen} onOpenChange={setAboutOpen}>

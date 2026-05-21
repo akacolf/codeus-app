@@ -89,13 +89,13 @@ export function Composer({
     }
   }, [])
 
-  // Auto-grow the textarea up to ~8 lines, then internal scroll takes over.
+  // Auto-grow the textarea up to ~10 lines, then internal scroll takes over.
   useEffect(() => {
     const el = textareaRef.current
     if (!el) return
     el.style.height = 'auto'
     const lineHeight = 22 // matches text-sm + leading-relaxed roughly
-    const max = lineHeight * 8 + 16
+    const max = lineHeight * 10 + 24
     el.style.height = Math.min(el.scrollHeight, max) + 'px'
     el.style.overflowY = el.scrollHeight > max ? 'auto' : 'hidden'
   }, [draft])
@@ -238,12 +238,12 @@ export function Composer({
         onKeyDown={onKey}
         placeholder={placeholder ?? 'Ask QC Codeus anything.  @ to use plugins or mention files'}
         rows={1}
-        className="block w-full resize-none bg-transparent px-5 pt-4 pb-1 text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
-        style={{ minHeight: 44 }}
+        className="block w-full resize-none bg-transparent px-6 pt-4 pb-1 text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
+        style={{ minHeight: 56 }}
       />
 
       <div
-        className="flex items-center justify-between gap-2 px-2 pb-2"
+        className="flex items-center justify-between gap-2 px-3 pb-3"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-1">

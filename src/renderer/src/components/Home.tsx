@@ -17,7 +17,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@renderer/components/ui/dropdown-menu'
-import { useSettings } from '@renderer/lib/settings'
+import { useSettings, type RuntimeMode } from '@renderer/lib/settings'
+import { cn } from '@renderer/lib/utils'
 import { Composer } from './Composer'
 
 interface Suggestion {
@@ -60,6 +61,8 @@ interface HomeProps {
   onReveal?: () => void
   onOpenConnectTool?: () => void
   onOpenGit?: () => void
+  branch: string | null
+  dirtyCount: number
 }
 
 function basename(path: string): string {
@@ -79,18 +82,18 @@ export function Home({
   onOpenTerminal,
   onReveal,
   onOpenConnectTool,
-  onOpenGit
+  onOpenGit,
+  branch,
+  dirtyCount
 }: HomeProps): React.JSX.Element {
   const [greetingIdx] = useState(() => Math.floor(Math.random() * GREETING_COUNT))
   const [projectPath, setProjectPath] = useState<string | null>(null)
-  const [branch, setBranch] = useState<string | null>(null)
   const [osName, setOsName] = useState<string>('')
   const [recent, setRecent] = useState<string[]>([])
   const { settings } = useSettings()
 
   const refreshProjectInfo = (): void => {
     void window.api.projectCwd().then(setProjectPath)
-    void window.api.gitBranch().then(setBranch)
     void window.api.project.recent().then(setRecent)
   }
 
@@ -156,10 +159,6 @@ export function Home({
                 </>
               )}
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => onOpenGit?.()} disabled={!onOpenGit}>
-                <GitBranch />
-                <span>Source control</span>
-              </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onReveal?.()} disabled={!onReveal}>
                 <FolderOpen />
                 <span>Reveal in Finder</span>
@@ -171,25 +170,33 @@ export function Home({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <span
-            title="Cloud sandbox is on the roadmap"
-            className="inline-flex items-center gap-1.5 rounded-full px-2 py-1.5"
-          >
-            <Laptop className="size-3.5" />
-            Work locally
-            <span className="ml-1 rounded-full bg-white/8 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-              <Cloud className="mr-1 inline size-2.5" />
-              cloud soon
-            </span>
-          </span>
+          <RuntimeModeChip />
 
-          <span
-            className="inline-flex items-center gap-1.5 rounded-full px-2 py-1.5"
-            title={branch ? `Current git branch: ${branch}` : 'This folder is not a git repository'}
-          >
-            <GitBranch className="size-3.5" />
-            {branch ?? <span className="text-muted-foreground/70">no repo</span>}
-          </span>
+          {branch ? (
+            <button
+              type="button"
+              onClick={() => onOpenGit?.()}
+              disabled={!onOpenGit}
+              title={`Source control · ${branch}${dirtyCount > 0 ? ` · ${dirtyCount} changed` : ''}`}
+              className="inline-flex items-center gap-1.5 rounded-full px-2 py-1.5 transition-colors hover:bg-white/5 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+            >
+              <GitBranch className="size-3.5" />
+              <span className="max-w-[10rem] truncate">{branch}</span>
+              {dirtyCount > 0 && (
+                <span className="rounded-full bg-white/12 px-1.5 py-0.5 text-[10px] text-foreground">
+                  {dirtyCount}
+                </span>
+              )}
+            </button>
+          ) : (
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full px-2 py-1.5"
+              title="This folder is not a git repository"
+            >
+              <GitBranch className="size-3.5" />
+              <span className="text-muted-foreground/70">no repo</span>
+            </span>
+          )}
         </div>
 
         <ul className="mt-8 flex w-full flex-col">
@@ -214,6 +221,89 @@ export function Home({
         </ul>
       </div>
     </div>
+  )
+}
+
+function RuntimeModeChip(): React.JSX.Element {
+  const { settings, set } = useSettings()
+  const [hasCreds, setHasCreds] = useState(false)
+  const [checking, setChecking] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    void window.api.sandbox.getCreds().then((r) => {
+      if (cancelled) return
+      setHasCreds(r.ok && r.configured)
+      setChecking(false)
+    })
+    return (): void => {
+      cancelled = true
+    }
+  }, [])
+
+  const choose = (mode: RuntimeMode): void => {
+    if (mode === 'cloud' && !hasCreds) return
+    set('runtimeMode', mode)
+  }
+
+  const isCloud = settings.runtimeMode === 'cloud'
+
+  return (
+    <div className="inline-flex items-center rounded-full bg-white/5 p-0.5">
+      <RuntimeModeOption
+        active={!isCloud}
+        onClick={() => choose('local')}
+        icon={<Laptop className="size-3.5" />}
+        label="Local"
+        title="Run commands on this machine via node-pty"
+      />
+      <RuntimeModeOption
+        active={isCloud}
+        onClick={() => choose('cloud')}
+        disabled={!hasCreds && !checking}
+        icon={<Cloud className="size-3.5" />}
+        label="Cloud"
+        title={
+          hasCreds
+            ? 'Run commands inside a Vercel Sandbox microVM'
+            : 'Add Vercel credentials in Settings to enable cloud sandbox'
+        }
+      />
+    </div>
+  )
+}
+
+function RuntimeModeOption({
+  active,
+  onClick,
+  disabled,
+  icon,
+  label,
+  title
+}: {
+  active: boolean
+  onClick: () => void
+  disabled?: boolean
+  icon: React.ReactNode
+  label: string
+  title: string
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 transition-colors disabled:opacity-40',
+        active
+          ? 'bg-white text-black'
+          : 'text-muted-foreground hover:bg-white/8 hover:text-foreground'
+      )}
+    >
+      {icon}
+      {label}
+    </button>
   )
 }
 

@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Check,
+  ChevronDown,
   ChevronRight,
   Copy,
+  FileCode2,
+  FileJson,
   FileText,
   FolderOpen,
   Loader2,
@@ -15,10 +18,17 @@ import {
   ThumbsUp,
   TriangleAlert
 } from 'lucide-react'
-import type { Chat, Message, ToolPart } from '@renderer/lib/chat'
+import type { Chat, Message, MessagePart, TextPart, ToolPart } from '@renderer/lib/chat'
 import { cn } from '@renderer/lib/utils'
 import { Button } from '@renderer/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '@renderer/components/ui/dropdown-menu'
 import { useChatStore, type ChatSettingsSnapshot } from '@renderer/stores/chatStore'
+import { useWorkspaceStore } from '@renderer/stores/workspaceStore'
 import { Composer } from './Composer'
 import { Markdown } from './Markdown'
 
@@ -192,7 +202,10 @@ function MessageBubble({
         <div className="rounded-2xl bg-input px-4 py-2.5 text-sm whitespace-pre-wrap">
           {message.text}
         </div>
-        <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="flex items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
+          <span className="text-[11px] text-muted-foreground">
+            {formatMessageTime(message.createdAt)}
+          </span>
           <CopyAction text={message.text} />
           <ActionButton
             label="Edit message"
@@ -215,23 +228,23 @@ function MessageBubble({
         ? [{ kind: 'text' as const, text: message.text }]
         : []
 
+  const refs = extractReferencedFiles(message.parts)
+  const split = splitChainAndFinal(parts)
+
   return (
-    <div className="group flex max-w-[85%] flex-col gap-1.5 self-start">
+    <div className="group flex max-w-[85%] flex-col gap-2 self-start">
       <div className="flex flex-col gap-3 text-sm leading-relaxed text-foreground/90">
-        {parts.map((p, i) =>
-          p.kind === 'text' ? (
-            <div key={`t-${i}`}>
-              <Markdown text={p.text} />
-              {isStreaming && i === parts.length - 1 && (
-                <span
-                  aria-hidden
-                  className="ml-1 inline-block size-2 translate-y-[-1px] animate-pulse rounded-full bg-foreground/70 align-middle"
-                />
-              )}
-            </div>
-          ) : (
-            <ActionChip key={p.toolCallId} tool={p} />
-          )
+        {split.chain.length > 0 && <WorkRollup chain={split.chain} isStreaming={isStreaming} />}
+        {split.final && (
+          <div>
+            <Markdown text={split.final.text} />
+            {isStreaming && (
+              <span
+                aria-hidden
+                className="ml-1 inline-block size-2 translate-y-[-1px] animate-pulse rounded-full bg-foreground/70 align-middle"
+              />
+            )}
+          </div>
         )}
         {isStreaming && parts.length === 0 && (
           <span
@@ -240,14 +253,18 @@ function MessageBubble({
           />
         )}
       </div>
+      {!isStreaming && refs.length > 0 && <FileReferences paths={refs} />}
       {!isStreaming && message.text.length > 0 && (
-        <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="flex items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
           <CopyAction text={message.text} />
           <ActionButton label="Regenerate response" onClick={onRegenerate}>
             <RefreshCw className="size-3.5" />
           </ActionButton>
           <FeedbackAction key={`${message.id}-up`} kind="up" />
           <FeedbackAction key={`${message.id}-down`} kind="down" />
+          <span className="ml-1 text-[11px] text-muted-foreground">
+            {formatMessageTime(message.createdAt)}
+          </span>
         </div>
       )}
     </div>
@@ -275,6 +292,124 @@ function toolLabel(tool: ToolPart): string {
     default:
       return present ? `Running ${tool.name}` : tool.name
   }
+}
+
+// Separate the model's work chain (tool calls + intermediate prose) from the
+// final response paragraph. Heuristic: everything up to and including the last
+// tool part is "chain"; any trailing text part is the final answer. If there
+// are no tool parts, there's no chain — it's just a normal text response.
+function splitChainAndFinal(parts: MessagePart[]): {
+  chain: MessagePart[]
+  final: TextPart | null
+} {
+  const hasTool = parts.some((p) => p.kind === 'tool')
+  if (!hasTool) {
+    const merged = parts
+      .map((p) => (p.kind === 'text' ? p.text : ''))
+      .join('')
+      .trim()
+    return { chain: [], final: merged.length > 0 ? { kind: 'text', text: merged } : null }
+  }
+  let lastToolIdx = -1
+  for (let i = 0; i < parts.length; i++) {
+    if (parts[i].kind === 'tool') lastToolIdx = i
+  }
+  const chain = parts.slice(0, lastToolIdx + 1)
+  const tail = parts.slice(lastToolIdx + 1)
+  const trailingText = tail
+    .map((p) => (p.kind === 'text' ? p.text : ''))
+    .join('')
+    .trim()
+  return {
+    chain,
+    final: trailingText.length > 0 ? { kind: 'text', text: trailingText } : null
+  }
+}
+
+// Sum elapsed time across all tool calls. While a tool is still running we
+// extrapolate from its startedAt so the live timer ticks against wall clock,
+// not stale durationMs. Falls back to the stream start if no tools have begun.
+function computeWorkedMs(chain: MessagePart[], now: number): number {
+  let total = 0
+  for (const p of chain) {
+    if (p.kind !== 'tool') continue
+    if (p.status === 'running') total += Math.max(0, now - p.startedAt)
+    else if (p.durationMs !== undefined) total += p.durationMs
+  }
+  return total
+}
+
+function WorkRollup({
+  chain,
+  isStreaming
+}: {
+  chain: MessagePart[]
+  isStreaming: boolean
+}): React.JSX.Element {
+  // Default open while streaming so the user can watch progress; once the
+  // stream completes, collapse so the final response stands alone. `override`
+  // lets the user pin the panel open/closed regardless of streaming state.
+  const [override, setOverride] = useState<boolean | null>(null)
+  const open = override ?? isStreaming
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    if (!isStreaming) return
+    const id = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [isStreaming])
+
+  const workedMs = computeWorkedMs(chain, now)
+  const label = isStreaming
+    ? `Working for ${formatDuration(workedMs)}`
+    : `Worked for ${formatDuration(workedMs)}`
+  const running = chain.find((p) => p.kind === 'tool' && p.status === 'running') as
+    | ToolPart
+    | undefined
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <button
+        type="button"
+        onClick={() => setOverride(!open)}
+        aria-expanded={open}
+        aria-label={open ? 'Hide work chain' : 'Show work chain'}
+        className="group/chip -ml-1 inline-flex w-fit max-w-full items-center gap-2 rounded-md px-1.5 py-0.5 text-[13px] text-muted-foreground transition-colors hover:bg-white/8 hover:text-foreground"
+      >
+        <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">
+          {isStreaming ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Terminal className="size-3.5" />
+          )}
+        </span>
+        <span className="truncate">{label}</span>
+        {running && isStreaming && !open && (
+          <span className="truncate text-muted-foreground/60">· {toolLabel(running)}</span>
+        )}
+        <ChevronRight
+          aria-hidden
+          className={cn(
+            'size-3.5 shrink-0 text-muted-foreground/60 transition-transform',
+            open && 'rotate-90'
+          )}
+        />
+      </button>
+      {open && (
+        <div className="ml-5 flex flex-col gap-3 border-l border-white/10 pl-4">
+          {chain.map((p, i) =>
+            p.kind === 'text' ? (
+              <div key={`c-t-${i}`} className="text-[13px] text-foreground/75 italic">
+                <Markdown text={p.text} />
+              </div>
+            ) : (
+              <ActionChip key={p.toolCallId} tool={p} />
+            )
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function ToolIcon({ name }: { name: string }): React.JSX.Element {
@@ -331,39 +466,99 @@ function ActionChip({ tool }: { tool: ToolPart }): React.JSX.Element {
   )
 }
 
+interface DetailRow {
+  verb: string
+  target: string
+  muted?: boolean
+}
+
+function buildDetailRows(tool: ToolPart): DetailRow[] {
+  const args = (tool.args ?? {}) as { path?: string; content?: string }
+  const path = args.path ?? ''
+  switch (tool.name) {
+    case 'read_file': {
+      if (tool.status === 'error') {
+        return [{ verb: 'Failed', target: path || 'file', muted: true }]
+      }
+      const result = tool.result as { content?: string } | undefined
+      const lines =
+        typeof result?.content === 'string' ? result.content.split('\n').length : undefined
+      return [
+        { verb: 'Read', target: path || 'file' },
+        ...(lines !== undefined ? [{ verb: 'Lines', target: String(lines), muted: true }] : [])
+      ]
+    }
+    case 'write_file': {
+      if (tool.status === 'error') {
+        return [{ verb: 'Failed', target: path || 'file', muted: true }]
+      }
+      const result = tool.result as { bytes?: number } | undefined
+      const size =
+        typeof args.content === 'string' ? args.content.length : (result?.bytes ?? undefined)
+      return [
+        { verb: 'Wrote', target: path || 'file' },
+        ...(size !== undefined
+          ? [{ verb: 'Size', target: `${size.toLocaleString()} chars`, muted: true }]
+          : [])
+      ]
+    }
+    case 'list_directory': {
+      const result = tool.result as
+        | { entries?: Array<{ name?: string; type?: 'file' | 'dir' }> }
+        | undefined
+      const entries = Array.isArray(result?.entries) ? result.entries : []
+      if (entries.length === 0) {
+        return [{ verb: 'Listed', target: path || '.', muted: true }]
+      }
+      return entries.map((e) => ({
+        verb: e.type === 'dir' ? 'Folder' : 'Read',
+        target: e.name || '(unknown)'
+      }))
+    }
+    default:
+      return [{ verb: 'Ran', target: tool.name }]
+  }
+}
+
 function ToolDetails({ tool }: { tool: ToolPart }): React.JSX.Element {
-  const argsText = tool.args !== undefined ? formatJson(tool.args) : null
-  const resultText = tool.result !== undefined ? formatJson(tool.result) : null
+  const rows = buildDetailRows(tool)
+  const errorText = tool.error
   return (
-    <div className="ml-5 flex flex-col gap-2 rounded-lg bg-white/4 px-3 py-2 text-xs text-foreground/85">
-      {argsText && <DetailBlock title="Arguments" body={argsText} />}
-      {tool.error && <DetailBlock title="Error" body={tool.error} />}
-      {resultText && <DetailBlock title="Result" body={resultText} />}
+    <div className="ml-5 flex flex-col gap-2 text-[13px] text-foreground/85">
+      {errorText && (
+        <div className="rounded-md bg-white/4 px-2.5 py-1.5 text-foreground/85">
+          <span className="text-muted-foreground">Error:</span> {errorText}
+        </div>
+      )}
+      {rows.length > 0 && (
+        <div
+          className={cn(
+            rows.length > 10 ? 'max-h-64 overflow-auto pr-1' : '',
+            'flex flex-col gap-0.5'
+          )}
+        >
+          {rows.map((row, i) => (
+            <div key={`${row.verb}-${row.target}-${i}`} className="flex items-baseline gap-2">
+              <span
+                className={cn(
+                  'shrink-0 text-muted-foreground',
+                  row.muted && 'text-muted-foreground/70'
+                )}
+              >
+                {row.verb}
+              </span>
+              <span className={cn('truncate', row.muted && 'text-foreground/70')}>
+                {row.target}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
       {tool.durationMs !== undefined && (
         <div className="text-[11px] text-muted-foreground">{formatDuration(tool.durationMs)}</div>
       )}
     </div>
   )
-}
-
-function DetailBlock({ title, body }: { title: string; body: string }): React.JSX.Element {
-  return (
-    <div className="flex flex-col gap-1">
-      <div className="text-[11px] tracking-wide text-muted-foreground uppercase">{title}</div>
-      <pre className="max-h-64 overflow-auto rounded-md bg-black/40 px-2.5 py-2 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-foreground/85">
-        {body}
-      </pre>
-    </div>
-  )
-}
-
-function formatJson(value: unknown): string {
-  if (typeof value === 'string') return value
-  try {
-    return JSON.stringify(value, null, 2)
-  } catch {
-    return String(value)
-  }
 }
 
 function formatDuration(ms: number): string {
@@ -373,6 +568,140 @@ function formatDuration(ms: number): string {
   const m = Math.floor(seconds / 60)
   const s = Math.round(seconds % 60)
   return `${m}m ${s}s`
+}
+
+// Time shown in the message footer. Same-day messages get clock time only;
+// older messages include the month/day so the conversation timeline reads.
+function formatMessageTime(ts: number): string {
+  const d = new Date(ts)
+  const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  const now = new Date()
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  if (sameDay) return time
+  const date = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  return `${date}, ${time}`
+}
+
+// Pull file paths touched by this assistant turn out of its tool parts.
+// Dedup by path, prefer the latest (write supersedes read).
+function extractReferencedFiles(parts: MessagePart[] | undefined): string[] {
+  if (!parts) return []
+  const seen = new Map<string, number>()
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i]
+    if (p.kind !== 'tool') continue
+    if (p.status !== 'done') continue
+    const args = (p.args ?? {}) as { path?: string }
+    if (p.name === 'read_file' || p.name === 'write_file') {
+      if (typeof args.path === 'string' && args.path.length > 0) seen.set(args.path, i)
+    }
+  }
+  return [...seen.entries()].sort((a, b) => a[1] - b[1]).map(([path]) => path)
+}
+
+function basename(p: string): string {
+  const i = p.replace(/\\/g, '/').lastIndexOf('/')
+  return i >= 0 ? p.slice(i + 1) : p
+}
+
+function extOf(p: string): string {
+  const base = basename(p)
+  const dot = base.lastIndexOf('.')
+  return dot > 0 ? base.slice(dot + 1).toLowerCase() : ''
+}
+
+function describeFile(p: string): string {
+  const ext = extOf(p)
+  if (!ext) return 'File'
+  const map: Record<string, string> = {
+    ts: 'TypeScript',
+    tsx: 'TypeScript',
+    js: 'JavaScript',
+    jsx: 'JavaScript',
+    json: 'JSON',
+    md: 'Markdown',
+    css: 'Stylesheet',
+    html: 'HTML',
+    yml: 'YAML',
+    yaml: 'YAML',
+    toml: 'TOML',
+    py: 'Python',
+    go: 'Go',
+    rs: 'Rust'
+  }
+  const kind = map[ext] ?? ext.toUpperCase()
+  return `${kind} · ${ext.toUpperCase()}`
+}
+
+function FileRefIcon({ path }: { path: string }): React.JSX.Element {
+  const ext = extOf(path)
+  const className = 'size-4 text-foreground/70'
+  if (ext === 'json') return <FileJson className={className} />
+  if (['ts', 'tsx', 'js', 'jsx', 'py', 'go', 'rs'].includes(ext))
+    return <FileCode2 className={className} />
+  return <FileText className={className} />
+}
+
+function FileReferences({ paths }: { paths: string[] }): React.JSX.Element {
+  return (
+    <div className="flex flex-col divide-y divide-white/8 rounded-xl bg-white/4">
+      {paths.map((p) => (
+        <FileReferenceRow key={p} path={p} />
+      ))}
+    </div>
+  )
+}
+
+function FileReferenceRow({ path }: { path: string }): React.JSX.Element {
+  const openEditor = useChatStore((s) => s.openEditor)
+  const openFile = useWorkspaceStore((s) => s.openFile)
+  const [copied, setCopied] = useState(false)
+
+  const handleOpenInEditor = (): void => {
+    openEditor()
+    void openFile(path)
+  }
+  const handleCopyPath = (): void => {
+    void navigator.clipboard.writeText(path).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1400)
+    })
+  }
+  const handleReveal = (): void => {
+    void window.api.revealInFolder()
+  }
+
+  return (
+    <div className="flex items-center gap-3 px-3 py-2.5">
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white/6">
+        <FileRefIcon path={path} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[13px] font-medium text-foreground/95">{basename(path)}</div>
+        <div className="truncate text-[11.5px] text-muted-foreground">{describeFile(path)}</div>
+      </div>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="xs"
+            className="gap-1 bg-white/6 text-foreground/85 hover:bg-white/12"
+          >
+            {copied ? 'Copied' : 'Open'}
+            <ChevronDown className="size-3" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-[180px]">
+          <DropdownMenuItem onSelect={handleOpenInEditor}>Open in editor</DropdownMenuItem>
+          <DropdownMenuItem onSelect={handleReveal}>Reveal in folder</DropdownMenuItem>
+          <DropdownMenuItem onSelect={handleCopyPath}>Copy path</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  )
 }
 
 function ActionButton({

@@ -89,14 +89,27 @@ export function EditorPane({ file }: EditorPaneProps): React.JSX.Element {
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
       void saveActive()
     })
-  }
 
-  if (file.loading) {
-    return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        Loading {file.path}…
-      </div>
-    )
+    const pushSelection = (): void => {
+      const sel = editor.getSelection()
+      const model = editor.getModel()
+      if (!sel || !model || sel.isEmpty()) {
+        void window.api.mcp.updateState({ selection: null })
+        return
+      }
+      void window.api.mcp.updateState({
+        selection: {
+          path: file.path,
+          startLine: sel.startLineNumber,
+          startCol: sel.startColumn,
+          endLine: sel.endLineNumber,
+          endCol: sel.endColumn,
+          text: model.getValueInRange(sel)
+        }
+      })
+    }
+    editor.onDidChangeCursorSelection(pushSelection)
+    pushSelection()
   }
 
   if (file.error) {

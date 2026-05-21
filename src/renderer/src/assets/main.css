@@ -103,6 +103,31 @@ input {
   a {
     -webkit-tap-highlight-color: transparent;
   }
+
+  /* Tailwind v4 dropped the default `cursor: pointer` on buttons; restore it
+     for interactive controls while keeping the I-beam for text fields. */
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  a[href],
+  label[for],
+  summary,
+  [role='menuitem'],
+  [role='option'],
+  [role='tab'] {
+    cursor: pointer;
+  }
+  button:disabled,
+  [aria-disabled='true'] {
+    cursor: not-allowed;
+  }
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='button']):not(
+      [type='submit']
+    ),
+  textarea,
+  [contenteditable='true'],
+  [contenteditable=''] {
+    cursor: text;
+  }
 }
 
 /* shiki injects <pre class="shiki"> with an inline background; we suppress it

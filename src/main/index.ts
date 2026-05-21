@@ -8,7 +8,9 @@ import icon from '../../resources/icon.png?asset'
 import { registerChatIpc } from './chat'
 import { registerFsIpc } from './fs'
 import { registerGitIpc } from './git'
-import { getActiveProjectCwd, registerProjectIpc } from './project'
+import { refreshMcpLockFile, registerMcpIpc, startMcpServer, stopMcpServer } from './mcp'
+import { getActiveProjectCwd, onActiveProjectCwdChanged, registerProjectIpc } from './project'
+import { registerSandboxIpc, stopAllSandboxes } from './sandbox'
 import { killAllPtys, registerTerminalIpc } from './terminal'
 import { registerUpdater } from './updater'
 
@@ -31,18 +33,29 @@ function loadWindowState(): WindowState {
   try {
     const raw = readFileSync(windowStatePath(), 'utf8')
     const parsed = JSON.parse(raw) as Partial<WindowState>
-    const width = Math.max(900, Number(parsed.width) || DEFAULT_WINDOW_STATE.width)
-    const height = Math.max(600, Number(parsed.height) || DEFAULT_WINDOW_STATE.height)
+    let width = Math.max(900, Number(parsed.width) || DEFAULT_WINDOW_STATE.width)
+    let height = Math.max(600, Number(parsed.height) || DEFAULT_WINDOW_STATE.height)
     const state: WindowState = { width, height }
     if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
-      // Only honor a saved position if it lies on an attached display.
-      const onScreen = screen.getAllDisplays().some((d) => {
+      // Find the display whose work area contains the saved top-left. If none
+      // do (monitor was unplugged, resolution changed, etc.), drop the saved
+      // position entirely so Electron centers a fresh window.
+      const display = screen.getAllDisplays().find((d) => {
         const { x, y, width: w, height: h } = d.workArea
         return parsed.x! >= x && parsed.y! >= y && parsed.x! < x + w && parsed.y! < y + h
       })
-      if (onScreen) {
-        state.x = parsed.x
-        state.y = parsed.y
+      if (display) {
+        const { x: dx, y: dy, width: dw, height: dh } = display.workArea
+        // Clamp the *whole* window inside the display work area — checking only
+        // the top-left used to let saved bounds bleed past the right/bottom
+        // edges (e.g. after a monitor swap), so a sliver of chrome ended up
+        // offscreen on launch.
+        width = Math.min(width, dw)
+        height = Math.min(height, dh)
+        state.width = width
+        state.height = height
+        state.x = Math.min(Math.max(parsed.x!, dx), dx + dw - width)
+        state.y = Math.min(Math.max(parsed.y!, dy), dy + dh - height)
       }
     }
     if (parsed.maximized) state.maximized = true
@@ -242,7 +255,16 @@ app.whenReady().then(() => {
   registerFsIpc(projectCwd)
   registerTerminalIpc(projectCwd)
   registerGitIpc(projectCwd)
+  registerSandboxIpc()
   registerUpdater()
+  registerMcpIpc()
+  void startMcpServer().catch((err) => {
+    console.error('[mcp] failed to start server:', err)
+  })
+  // Keep Claude Code's IDE auto-discovery lock file in sync with the active project.
+  onActiveProjectCwdChanged(() => {
+    void refreshMcpLockFile()
+  })
 
   createWindow()
 
@@ -258,6 +280,7 @@ app.whenReady().then(() => {
 // explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
   killAllPtys()
+  void stopAllSandboxes()
   if (process.platform !== 'darwin') {
     app.quit()
   }
@@ -265,6 +288,8 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   killAllPtys()
+  void stopAllSandboxes()
+  void stopMcpServer()
 })
 
 // In this file you can include the rest of your app's specific main process

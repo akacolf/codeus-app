@@ -40,10 +40,30 @@ function save(): void {
   }
 }
 
+// Listeners notified on cwd change. We expose this hook instead of having
+// project.ts reach into mcp.ts directly — mcp.ts depends on getActiveProjectCwd
+// from this module, so a static back-edge would form a cycle.
+type CwdListener = (cwd: string) => void
+const cwdListeners: CwdListener[] = []
+export function onActiveProjectCwdChanged(cb: CwdListener): () => void {
+  cwdListeners.push(cb)
+  return () => {
+    const i = cwdListeners.indexOf(cb)
+    if (i >= 0) cwdListeners.splice(i, 1)
+  }
+}
+
 function broadcast(): void {
   const cwd = activeCwd()
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.isDestroyed()) win.webContents.send('project:changed', { cwd })
+  }
+  for (const cb of cwdListeners) {
+    try {
+      cb(cwd)
+    } catch (err) {
+      console.error('[project] cwd listener threw:', err)
+    }
   }
 }
 

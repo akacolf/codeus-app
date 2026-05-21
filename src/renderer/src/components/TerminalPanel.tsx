@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Maximize2, Minimize2, Plus, X } from 'lucide-react'
+import { Cloud, Laptop, Maximize2, Minimize2, Plus, X } from 'lucide-react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { genId } from '@renderer/lib/chat'
 import { cn } from '@renderer/lib/utils'
+import { useSettings, type RuntimeMode } from '@renderer/lib/settings'
 
 interface TerminalPanelProps {
   open: boolean
@@ -38,6 +39,7 @@ const THEME = {
 interface Tab {
   id: string
   label: string
+  mode: RuntimeMode
 }
 
 function defaultShellLabel(): string {
@@ -61,6 +63,7 @@ function readSavedHeight(): number {
 }
 
 export function TerminalPanel({ open, onClose }: TerminalPanelProps): React.JSX.Element {
+  const { settings } = useSettings()
   const [tabs, setTabs] = useState<Tab[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [height, setHeight] = useState<number>(readSavedHeight)
@@ -70,16 +73,22 @@ export function TerminalPanel({ open, onClose }: TerminalPanelProps): React.JSX.
   const [fullscreen, setFullscreen] = useState(false)
   const counterRef = useRef(0)
 
+  const labelFor = (mode: RuntimeMode, n: number): string =>
+    mode === 'cloud' ? `cloud ${n}` : `${defaultShellLabel()} ${n}`
+
   // Lazy-create the first tab when the panel opens.
   useEffect(() => {
     if (open && tabs.length === 0) {
       const id = genId()
       counterRef.current = 1
-      const label = `${defaultShellLabel()} 1`
+      const mode = settings.runtimeMode
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setTabs([{ id, label }])
+      setTabs([{ id, label: labelFor(mode, 1), mode }])
       setActiveId(id)
     }
+    // settings.runtimeMode intentionally not a dependency — switching modes
+    // shouldn't reset an open terminal, only affect newly created tabs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, tabs.length])
 
   // Track viewport so the drag clamp + fullscreen stay correct on window resize.
@@ -101,8 +110,8 @@ export function TerminalPanel({ open, onClose }: TerminalPanelProps): React.JSX.
   const addTab = (): void => {
     counterRef.current += 1
     const id = genId()
-    const label = `${defaultShellLabel()} ${counterRef.current}`
-    setTabs((t) => [...t, { id, label }])
+    const mode = settings.runtimeMode
+    setTabs((t) => [...t, { id, label: labelFor(mode, counterRef.current), mode }])
     setActiveId(id)
   }
 
@@ -181,6 +190,7 @@ export function TerminalPanel({ open, onClose }: TerminalPanelProps): React.JSX.
             <TerminalTab
               key={t.id}
               label={t.label}
+              mode={t.mode}
               active={t.id === activeId}
               onSelect={() => setActiveId(t.id)}
               onClose={() => closeTab(t.id)}
@@ -216,7 +226,7 @@ export function TerminalPanel({ open, onClose }: TerminalPanelProps): React.JSX.
       </div>
       <div className="relative min-h-0 flex-1 px-2 pb-2">
         {tabs.map((t) => (
-          <TerminalInstance key={t.id} visible={open && t.id === activeId} />
+          <TerminalInstance key={t.id} visible={open && t.id === activeId} mode={t.mode} />
         ))}
       </div>
     </div>
@@ -225,15 +235,18 @@ export function TerminalPanel({ open, onClose }: TerminalPanelProps): React.JSX.
 
 function TerminalTab({
   label,
+  mode,
   active,
   onSelect,
   onClose
 }: {
   label: string
+  mode: RuntimeMode
   active: boolean
   onSelect: () => void
   onClose: () => void
 }): React.JSX.Element {
+  const Icon = mode === 'cloud' ? Cloud : Laptop
   return (
     <div
       className={cn(
@@ -242,6 +255,7 @@ function TerminalTab({
       )}
     >
       <button type="button" onClick={onSelect} className="inline-flex items-center gap-1.5 pr-3">
+        <Icon className="size-3" />
         <span className="font-mono">{label}</span>
       </button>
       <button
@@ -259,7 +273,13 @@ function TerminalTab({
   )
 }
 
-function TerminalInstance({ visible }: { visible: boolean }): React.JSX.Element {
+function TerminalInstance({
+  visible,
+  mode
+}: {
+  visible: boolean
+  mode: RuntimeMode
+}): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
@@ -288,20 +308,8 @@ function TerminalInstance({ visible }: { visible: boolean }): React.JSX.Element 
       /* host might not be visible yet */
     }
 
-    const ptyId = genId()
-    const pty = window.api.terminal.open(
-      ptyId,
-      { cols: term.cols, rows: term.rows },
-      {
-        onData: (data) => term.write(data),
-        onExit: () => {
-          term.write('\r\n\x1b[2m[process exited]\x1b[0m\r\n')
-        }
-      }
-    )
-
-    const dataDisposable = term.onData((data) => pty.write(data))
-    const resizeDisposable = term.onResize(({ cols, rows }) => pty.resize(cols, rows))
+    termRef.current = term
+    fitRef.current = fit
 
     const ro = new ResizeObserver(() => {
       try {
@@ -312,19 +320,41 @@ function TerminalInstance({ visible }: { visible: boolean }): React.JSX.Element 
     })
     ro.observe(host)
 
-    termRef.current = term
-    fitRef.current = fit
+    let cleanup: () => void = () => {
+      /* replaced below */
+    }
+
+    if (mode === 'local') {
+      const ptyId = genId()
+      const pty = window.api.terminal.open(
+        ptyId,
+        { cols: term.cols, rows: term.rows },
+        {
+          onData: (data) => term.write(data),
+          onExit: () => {
+            term.write('\r\n\x1b[2m[process exited]\x1b[0m\r\n')
+          }
+        }
+      )
+      const dataDisposable = term.onData((data) => pty.write(data))
+      const resizeDisposable = term.onResize(({ cols, rows }) => pty.resize(cols, rows))
+      cleanup = (): void => {
+        dataDisposable.dispose()
+        resizeDisposable.dispose()
+        pty.close()
+      }
+    } else {
+      cleanup = wireCloudSandbox(term)
+    }
 
     return (): void => {
       ro.disconnect()
-      dataDisposable.dispose()
-      resizeDisposable.dispose()
-      pty.close()
+      cleanup()
       term.dispose()
       termRef.current = null
       fitRef.current = null
     }
-  }, [])
+  }, [mode])
 
   // When this tab becomes visible, refit and focus.
   useEffect(() => {
@@ -348,4 +378,100 @@ function TerminalInstance({ visible }: { visible: boolean }): React.JSX.Element 
       )}
     />
   )
+}
+
+// Cloud mode = line-buffered command runner backed by @vercel/sandbox runCommand.
+// The SDK doesn't expose a streaming stdin/PTY, so we don't try to emulate one —
+// the user types a line, hits Enter, we ship it via IPC, and stream the output
+// back. Up arrow recalls history. Anything requiring a real TTY (vim, htop) won't
+// work; that's surfaced to the user via the connection banner.
+function wireCloudSandbox(term: Terminal): () => void {
+  const PROMPT = '\x1b[2m$\x1b[0m '
+  const history: string[] = []
+  let historyIdx = -1
+  let buf = ''
+  let started = false
+  let disposed = false
+
+  const sandboxId = genId()
+  const channel = window.api.sandbox.open(
+    sandboxId,
+    {},
+    {
+      onData: (data) => {
+        if (!disposed) term.write(data)
+      },
+      onPrompt: () => {
+        if (!disposed) term.write(PROMPT)
+      }
+    }
+  )
+
+  const writePrompt = (): void => term.write(PROMPT)
+
+  void (async () => {
+    term.write('\x1b[2mstarting vercel sandbox…\x1b[0m\r\n')
+    const r = await channel.start()
+    started = true
+    if (!r.ok) {
+      term.write(`\x1b[31m${r.error}\x1b[0m\r\n`)
+      term.write(
+        '\x1b[2mAdd a Vercel token + team/project ID in Settings → Cloud sandbox.\x1b[0m\r\n'
+      )
+      return
+    }
+    writePrompt()
+  })()
+
+  const dataDisposable = term.onData((d) => {
+    if (!started) return
+    for (const ch of d) {
+      const code = ch.charCodeAt(0)
+      if (ch === '\r') {
+        term.write('\r\n')
+        const line = buf
+        buf = ''
+        if (line.trim()) {
+          history.push(line)
+          historyIdx = history.length
+        }
+        void channel.run(line)
+      } else if (code === 127 || code === 8) {
+        // backspace
+        if (buf.length > 0) {
+          buf = buf.slice(0, -1)
+          term.write('\b \b')
+        }
+      } else if (ch === '\x1b') {
+        // skip — handled below for arrow sequences
+      } else if (code >= 32 && code !== 127) {
+        buf += ch
+        term.write(ch)
+      }
+    }
+    // Arrow-key history: very rough, just handles up/down at end of input.
+    if (d === '\x1b[A' && history.length > 0) {
+      historyIdx = Math.max(0, historyIdx - 1)
+      replaceLine(history[historyIdx] ?? '')
+    } else if (d === '\x1b[B') {
+      historyIdx = Math.min(history.length, historyIdx + 1)
+      replaceLine(historyIdx >= history.length ? '' : history[historyIdx])
+    }
+  })
+
+  function replaceLine(next: string): void {
+    // Clear current input visually
+    while (buf.length > 0) {
+      term.write('\b \b')
+      buf = buf.slice(0, -1)
+    }
+    buf = next
+    term.write(next)
+  }
+
+  return (): void => {
+    disposed = true
+    dataDisposable.dispose()
+    void channel.close()
+  }
 }

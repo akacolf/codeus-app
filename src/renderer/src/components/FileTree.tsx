@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ChevronRight, File as FileIcon, Folder, FolderOpen } from 'lucide-react'
 import { cn } from '@renderer/lib/utils'
 import { useWorkspaceStore, type DirEntry } from '@renderer/stores/workspaceStore'
+import { Loader } from './Loader'
 
 interface FileTreeProps {
   activePath: string | null
@@ -71,7 +72,11 @@ function DirNode({
   // Root renders its contents directly, no header row.
   if (dirPath === '') {
     if (!entries && !error)
-      return <div className="px-3 py-2 text-xs text-muted-foreground">Loading…</div>
+      return (
+        <div className="flex items-center justify-center px-3 py-6">
+          <Loader size={28} label="Loading files" />
+        </div>
+      )
     if (error) return <div className="px-3 py-2 text-xs text-muted-foreground">{error}</div>
     return (
       <ul className="flex flex-col">

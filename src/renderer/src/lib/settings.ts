@@ -16,16 +16,20 @@ export const MODELS = [
 
 export type ModelId = (typeof MODELS)[number]['id']
 
+export type RuntimeMode = 'local' | 'cloud'
+
 interface Settings {
   permission: PermissionId
   model: ModelId
   userName: string
+  runtimeMode: RuntimeMode
 }
 
 const DEFAULTS: Settings = {
   permission: 'default',
   model: 'opus-4.7',
-  userName: ''
+  userName: '',
+  runtimeMode: 'local'
 }
 
 const KEY = 'qc-codeus.settings.v1'

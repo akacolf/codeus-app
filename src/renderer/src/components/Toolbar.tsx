@@ -3,7 +3,6 @@ import {
   ArrowRight,
   ChevronDown,
   Code,
-  GitBranch,
   Info,
   Keyboard,
   PanelLeft,
@@ -40,9 +39,6 @@ interface ToolbarProps {
   onOpenSettings?: () => void
   onOpenShortcuts?: () => void
   onOpenAbout?: () => void
-  onOpenGit?: () => void
-  branchLabel?: string | null
-  dirtyCount?: number
 }
 
 export function Toolbar({
@@ -57,10 +53,7 @@ export function Toolbar({
   onOpenTerminal,
   onOpenSettings,
   onOpenShortcuts,
-  onOpenAbout,
-  onOpenGit,
-  branchLabel,
-  dirtyCount = 0
+  onOpenAbout
 }: ToolbarProps): React.JSX.Element {
   const ToggleIcon = sidebarOpen ? PanelLeftOpen : PanelLeft
   return (
@@ -83,6 +76,9 @@ export function Toolbar({
       <ChromeButton label="New chat" onClick={onCompose} disabled={!onCompose}>
         <SquarePen />
       </ChromeButton>
+
+      <div className="flex-1" />
+
       <ChromeButton
         label="Open editor"
         active={editorActive}
@@ -91,30 +87,6 @@ export function Toolbar({
       >
         <Code />
       </ChromeButton>
-
-      <div className="flex-1" />
-
-      {/* Git chip only appears when the active project IS a repo. The
-          "no repo" state is surfaced under the composer next to the project
-          chip, not as a separate toolbar pill. */}
-      {onOpenGit && branchLabel && (
-        <button
-          type="button"
-          onClick={onOpenGit}
-          aria-label="Source control"
-          title={`Branch ${branchLabel}${dirtyCount > 0 ? ` · ${dirtyCount} changed` : ''}`}
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-          className="mr-1 inline-flex h-7 max-w-[12rem] items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-white/8 hover:text-foreground"
-        >
-          <GitBranch className="size-[13px]" />
-          <span className="truncate">{branchLabel}</span>
-          {dirtyCount > 0 && (
-            <span className="rounded-full bg-white/12 px-1.5 py-0.5 text-[10px] text-foreground">
-              {dirtyCount}
-            </span>
-          )}
-        </button>
-      )}
 
       <ChromeButton label="Open terminal" onClick={onOpenTerminal} disabled={!onOpenTerminal}>
         <Terminal />
