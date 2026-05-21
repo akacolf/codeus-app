@@ -296,6 +296,10 @@ function TerminalInstance({
       lineHeight: 1.25,
       cursorBlink: true,
       allowProposedApi: true,
+      // Option-as-Meta is what bash/zsh readline expects for word-motion keys
+      // (Opt+B, Opt+F, Opt+Backspace, etc). Without this xterm.js eats the
+      // Option modifier on macOS and the shell never sees the escape prefix.
+      macOptionIsMeta: true,
       theme: THEME,
       convertEol: false,
       scrollback: 5000
@@ -350,15 +354,60 @@ function TerminalInstance({
       )
       const dataDisposable = term.onData((data) => pty.write(data))
       const resizeDisposable = term.onResize(({ cols, rows }) => pty.resize(cols, rows))
-      // Shift+Enter inserts a literal newline (LF, 0x0a) into the shell's input
-      // buffer instead of the usual CR (0x0d) that commits the line. Most
-      // shells' readline treats LF as a continuation, so users can compose
-      // multi-line heredocs / loops without typing `\` at end of line.
+      // Bridge macOS-native editing shortcuts to readline / Claude-Code-style
+      // keybindings. xterm.js forwards Ctrl-* keys raw (Ctrl+A, Ctrl+E, Ctrl+U,
+      // Ctrl+K, Ctrl+W, Ctrl+R, Ctrl+L, Ctrl+C, Ctrl+D, …) as their ASCII
+      // control bytes, so those already "just work" inside the PTY. What
+      // doesn't pass through by default is the Cmd modifier — macOS users
+      // expect Cmd+←/→ to jump to line start/end and Cmd+Backspace to clear
+      // the line, so we translate them to the equivalent readline bytes.
+      // Shift+Enter writes a literal LF (0x0a) instead of CR so users can
+      // compose multi-line heredocs / loops without typing `\` at end of line.
       term.attachCustomKeyEventHandler((ev) => {
-        if (ev.type === 'keydown' && ev.shiftKey && ev.key === 'Enter') {
+        if (ev.type !== 'keydown') return true
+
+        if (ev.shiftKey && ev.key === 'Enter') {
           pty.write('\n')
           return false
         }
+
+        // Cmd-based readline equivalents (macOS).
+        if (ev.metaKey && !ev.ctrlKey && !ev.altKey) {
+          switch (ev.key) {
+            case 'ArrowLeft':
+              pty.write('\x01') // Ctrl-A: beginning of line
+              return false
+            case 'ArrowRight':
+              pty.write('\x05') // Ctrl-E: end of line
+              return false
+            case 'Backspace':
+              pty.write('\x15') // Ctrl-U: kill to start of line
+              return false
+            case 'Delete':
+              pty.write('\x0b') // Ctrl-K: kill to end of line
+              return false
+            case 'k':
+            case 'K':
+              // Cmd+K is "clear" in most macOS terminals; map to Ctrl-L so the
+              // shell's clear-screen also fires (most users want both effects).
+              pty.write('\x0c')
+              return false
+          }
+        }
+
+        // Alt/Option mapped explicitly for the cases macOptionIsMeta misses
+        // (arrows aren't bytes, so the runtime needs a hint).
+        if (ev.altKey && !ev.metaKey && !ev.ctrlKey) {
+          switch (ev.key) {
+            case 'ArrowLeft':
+              pty.write('\x1bb') // Meta-b: backward word
+              return false
+            case 'ArrowRight':
+              pty.write('\x1bf') // Meta-f: forward word
+              return false
+          }
+        }
+
         return true
       })
       cleanup = (): void => {
