@@ -776,7 +776,7 @@ function ThinkingIndicator(): React.JSX.Element {
   return (
     <span
       aria-live="polite"
-      className="inline-flex items-center gap-1 text-[13px] text-muted-foreground italic"
+      className="inline-flex items-center gap-1 text-[13px] text-muted-foreground"
     >
       <span>{THINKING_PHRASES[i]}</span>
       <span aria-hidden className="inline-flex">
