@@ -3,9 +3,8 @@ import { ArrowLeft, Check, Cloud, Copy, RotateCw, X } from 'lucide-react'
 import { Loader } from './Loader'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
-import { MODELS, PERMISSIONS, useSettings } from '@renderer/lib/settings'
+import { useSettings } from '@renderer/lib/settings'
 import { getUsage, resetUsage, subscribeUsage, type UsageSnapshot } from '@renderer/lib/usage'
-import { cn } from '@renderer/lib/utils'
 import { useChatStore } from '@renderer/stores/chatStore'
 
 function formatNumber(n: number): string {
@@ -58,22 +57,6 @@ export function SettingsPage(): React.JSX.Element {
               placeholder="Display name"
               onChange={(e) => set('userName', e.target.value)}
               maxLength={40}
-            />
-          </Section>
-
-          <Section title="Default model">
-            <ChipRow
-              items={MODELS.map((m) => ({ id: m.id, label: m.label }))}
-              selectedId={settings.model}
-              onSelect={(id) => set('model', id as typeof settings.model)}
-            />
-          </Section>
-
-          <Section title="Default permissions">
-            <ChipRow
-              items={PERMISSIONS.map((p) => ({ id: p.id, label: p.label }))}
-              selectedId={settings.permission}
-              onSelect={(id) => set('permission', id as typeof settings.permission)}
             />
           </Section>
 
@@ -316,40 +299,6 @@ function Stat({ label, value }: { label: string; value: string }): React.JSX.Ele
     <div className="flex flex-col gap-0.5 rounded-lg bg-white/5 px-3 py-2">
       <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
       <span className="text-sm font-medium">{value}</span>
-    </div>
-  )
-}
-
-function ChipRow({
-  items,
-  selectedId,
-  onSelect
-}: {
-  items: Array<{ id: string; label: string; hint?: string }>
-  selectedId: string
-  onSelect: (id: string) => void
-}): React.JSX.Element {
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {items.map((it) => {
-        const active = it.id === selectedId
-        return (
-          <button
-            key={it.id}
-            type="button"
-            onClick={() => onSelect(it.id)}
-            className={cn(
-              'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-white/8 hover:text-foreground',
-              active && 'bg-white text-black hover:bg-white hover:text-black'
-            )}
-          >
-            {it.hint && (
-              <span className={cn('text-foreground', active && 'text-black/70')}>{it.hint}</span>
-            )}
-            <span>{it.label}</span>
-          </button>
-        )
-      })}
     </div>
   )
 }
