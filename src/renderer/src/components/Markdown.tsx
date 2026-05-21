@@ -93,16 +93,28 @@ export const Markdown = memo(function Markdown({ text }: { text: string }): Reac
           ),
           strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
           em: ({ children }) => <em className="italic">{children}</em>,
-          a: ({ href, children }) => (
-            <a
-              href={href}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="underline underline-offset-2 hover:text-foreground"
-            >
-              {children}
-            </a>
-          ),
+          a: ({ href, children }) => {
+            // Project file links open in the IDE editor (no underline). External
+            // URLs fall through to the standard anchor styling.
+            const fileRef = parseFileHref(href)
+            if (fileRef) {
+              return (
+                <Citation path={fileRef.path} line={fileRef.line}>
+                  {children}
+                </Citation>
+              )
+            }
+            return (
+              <a
+                href={href}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="underline underline-offset-2 hover:text-foreground"
+              >
+                {children}
+              </a>
+            )
+          },
           blockquote: ({ children }) => (
             <blockquote className="mt-3 border-l-2 border-white/20 pl-3 text-foreground/70">
               {children}
@@ -141,6 +153,23 @@ export const Markdown = memo(function Markdown({ text }: { text: string }): Reac
     </div>
   )
 })
+
+// Recognize an `<a href>` that points at a project file, with an optional line
+// number expressed as `:42`, `#L42`, or `#42`. Returns null for external URLs,
+// mailtos, anchors, or anything that doesn't carry a code-shaped extension.
+const FILE_HREF_RE = new RegExp(
+  `^\\.?\\.?/?([\\w./@\\-+]+?\\.(?:${CITATION_EXTS}))(?:[:#]L?(\\d+))?$`,
+  'i'
+)
+
+function parseFileHref(href: string | undefined): { path: string; line: number } | null {
+  if (!href) return null
+  if (/^[a-z]+:\/\//i.test(href)) return null
+  if (href.startsWith('mailto:') || href.startsWith('#')) return null
+  const m = FILE_HREF_RE.exec(href.trim())
+  if (!m) return null
+  return { path: m[1], line: m[2] ? parseInt(m[2], 10) : 1 }
+}
 
 // Walk react-markdown children and turn citation strings into clickable spans.
 // We only split string nodes; element nodes (e.g., `<code>`, `<strong>`) pass
