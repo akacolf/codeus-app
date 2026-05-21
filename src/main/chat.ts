@@ -33,6 +33,14 @@ const MODEL_MAP: Record<string, string> = {
 // sets `QC_PROXY_BASE_URL=http://localhost:3000/v1`.
 const QC_PROXY_BASE_URL = process.env.QC_PROXY_BASE_URL || 'https://api.quantumclub.sh/v1'
 
+// Shared secret matched against `QC_CLIENT_TOKEN` on the proxy. Baked into
+// the distributed app — not real security (a determined user can extract it
+// from the asar bundle), but blocks anonymous abuse of the proxy URL. Rotate
+// + reship when leaks are suspected. Real per-user auth replaces this later.
+const QC_CLIENT_TOKEN =
+  process.env.QC_CLIENT_TOKEN ||
+  '08606d51e72936e8dc17d6dcd0481d2a5a0d97b0c825851b5189b2b95be91c06'
+
 const inFlight = new Map<string, AbortController>()
 
 function send(wc: WebContents, channel: string, payload: unknown): void {
@@ -45,13 +53,13 @@ async function runStream(wc: WebContents, params: StartParams): Promise<void> {
   inFlight.set(requestId, controller)
 
   try {
-    // The proxy authenticates the caller server-side and uses its own
-    // AI Gateway key upstream. The client doesn't need a token — pass a
-    // placeholder so @ai-sdk/openai-compatible doesn't throw on construction.
+    // @ai-sdk/openai-compatible sends `apiKey` as the Authorization header,
+    // which the proxy matches against QC_CLIENT_TOKEN before forwarding to
+    // AI Gateway with its own key.
     const provider = createOpenAICompatible({
       name: 'qc',
       baseURL: QC_PROXY_BASE_URL,
-      apiKey: 'qc-anonymous'
+      apiKey: QC_CLIENT_TOKEN
     })
     const modelId = MODEL_MAP[model] ?? MODEL_MAP['sonnet-4.6']
 

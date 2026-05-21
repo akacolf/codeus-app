@@ -92,8 +92,12 @@ function mockOpenAIStream(model: string): Response {
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') return jsonError(405, 'Method not allowed')
 
-  // TODO: replace with real QC session lookup + credit metering. For now the
-  // proxy is open in dev; gate before exposing to the public internet.
+  // Shared-secret gate, mirrors the production proxy in quantum-club-website.
+  const expected = process.env.QC_CLIENT_TOKEN
+  if (expected) {
+    const got = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
+    if (got !== expected) return jsonError(401, 'invalid or missing client token', 'auth_error')
+  }
 
   if (process.env.QC_MOCK_UPSTREAM === 'true') {
     let model = 'qc-mock'
