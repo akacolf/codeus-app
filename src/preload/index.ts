@@ -7,8 +7,28 @@ export interface ChatStartParams {
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
 }
 
+export type ChatToolEvent =
+  | {
+      kind: 'start'
+      requestId: string
+      toolCallId: string
+      name: string
+      args: unknown
+      startedAt: number
+    }
+  | {
+      kind: 'end'
+      requestId: string
+      toolCallId: string
+      status: 'done' | 'error'
+      result?: unknown
+      error?: string
+      durationMs: number
+    }
+
 export interface ChatHandlers {
   onChunk: (delta: string) => void
+  onTool: (event: ChatToolEvent) => void
   onDone: () => void
   onError: (message: string) => void
 }
@@ -19,6 +39,9 @@ function startChat(params: ChatStartParams, handlers: ChatHandlers): () => void 
   const chunk = (_e: IpcRendererEvent, p: { requestId: string; delta: string }): void => {
     if (p.requestId === requestId) handlers.onChunk(p.delta)
   }
+  const toolEvt = (_e: IpcRendererEvent, p: ChatToolEvent): void => {
+    if (p.requestId === requestId) handlers.onTool(p)
+  }
   const done = (_e: IpcRendererEvent, p: { requestId: string }): void => {
     if (p.requestId === requestId) cleanup(() => handlers.onDone())
   }
@@ -28,12 +51,14 @@ function startChat(params: ChatStartParams, handlers: ChatHandlers): () => void 
 
   const cleanup = (then: () => void): void => {
     ipcRenderer.off('chat:chunk', chunk)
+    ipcRenderer.off('chat:tool', toolEvt)
     ipcRenderer.off('chat:done', done)
     ipcRenderer.off('chat:error', err)
     then()
   }
 
   ipcRenderer.on('chat:chunk', chunk)
+  ipcRenderer.on('chat:tool', toolEvt)
   ipcRenderer.on('chat:done', done)
   ipcRenderer.on('chat:error', err)
   ipcRenderer.send('chat:start', params)
@@ -182,6 +207,88 @@ export type GitStatus =
 
 export type GitResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string }
 
+export type SandboxCredsState =
+  | { ok: true; configured: true; teamId: string; projectId: string; tokenPreview: string }
+  | { ok: false; configured: false }
+
+interface SandboxListeners {
+  onData: (data: string) => void
+  onPrompt: () => void
+}
+
+function openSandbox(
+  sandboxId: string,
+  init: { cwd?: string },
+  listeners: SandboxListeners
+): {
+  start: () => Promise<{ ok: true } | { ok: false; error: string }>
+  run: (line: string) => Promise<{ ok: true } | { ok: false; error: string }>
+  close: () => Promise<void>
+} {
+  const onData = (_e: IpcRendererEvent, p: { sandboxId: string; data: string }): void => {
+    if (p.sandboxId === sandboxId) listeners.onData(p.data)
+  }
+  const onPrompt = (_e: IpcRendererEvent, p: { sandboxId: string }): void => {
+    if (p.sandboxId === sandboxId) listeners.onPrompt()
+  }
+  ipcRenderer.on('sandbox:data', onData)
+  ipcRenderer.on('sandbox:prompt', onPrompt)
+
+  return {
+    start: () => ipcRenderer.invoke('sandbox:open', { sandboxId, cwd: init.cwd }),
+    run: (line) => ipcRenderer.invoke('sandbox:run', { sandboxId, line }),
+    close: async () => {
+      ipcRenderer.off('sandbox:data', onData)
+      ipcRenderer.off('sandbox:prompt', onPrompt)
+      await ipcRenderer.invoke('sandbox:close', { sandboxId })
+    }
+  }
+}
+
+const sandboxBridge = {
+  getCreds: (): Promise<SandboxCredsState> => ipcRenderer.invoke('sandbox:creds:get'),
+  setCreds: (creds: {
+    token: string
+    teamId: string
+    projectId: string
+  }): Promise<{ ok: true } | { ok: false; error: string }> =>
+    ipcRenderer.invoke('sandbox:creds:set', creds),
+  clearCreds: (): Promise<{ ok: true }> => ipcRenderer.invoke('sandbox:creds:clear'),
+  open: openSandbox
+}
+
+export interface McpInfo {
+  url: string
+  port: number
+  token: string
+}
+
+export interface McpOpenTab {
+  path: string
+  dirty: boolean
+}
+
+export interface McpSelection {
+  path: string
+  startLine: number
+  startCol: number
+  endLine: number
+  endCol: number
+  text: string
+}
+
+export interface McpStatePatch {
+  activeFile?: string | null
+  openTabs?: McpOpenTab[]
+  selection?: McpSelection | null
+}
+
+const mcpBridge = {
+  getInfo: (): Promise<McpInfo | null> => ipcRenderer.invoke('mcp:getInfo'),
+  updateState: (patch: McpStatePatch): Promise<{ ok: true } | { ok: false; error: string }> =>
+    ipcRenderer.invoke('mcp:updateState', patch)
+}
+
 const gitBridge = {
   status: (): Promise<GitStatus> => ipcRenderer.invoke('git:status'),
   branches: (): Promise<GitResult<{ current: string | null; all: string[] }>> =>
@@ -208,7 +315,9 @@ const api = {
   terminal: { open: openPty },
   updater: updaterBridge,
   project: projectBridge,
-  git: gitBridge
+  git: gitBridge,
+  sandbox: sandboxBridge,
+  mcp: mcpBridge
 }
 
 export type Api = typeof api

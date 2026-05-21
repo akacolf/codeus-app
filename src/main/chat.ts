@@ -1,7 +1,10 @@
 import { ipcMain, type WebContents } from 'electron'
-import { streamText, type ModelMessage } from 'ai'
+import { stepCountIs, streamText, tool, type ModelMessage } from 'ai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
+import { promises as fs } from 'fs'
+import { posix, relative, resolve, sep } from 'path'
 import { z } from 'zod'
+import { getActiveProjectCwd } from './project'
 
 const StartParamsSchema = z.object({
   requestId: z.string().min(1),
@@ -28,22 +31,77 @@ const MODEL_MAP: Record<string, string> = {
   'haiku-4.5': 'anthropic/claude-haiku-4.5'
 }
 
-// Production default points at the shared Quantum Club API host. Needs DNS +
-// a Vercel alias on the `proxy/` deployment before it'll resolve. Local dev
-// sets `QC_PROXY_BASE_URL=http://localhost:3000/v1`.
 const QC_PROXY_BASE_URL = process.env.QC_PROXY_BASE_URL || 'https://api.quantumclub.sh/v1'
 
-// Shared secret matched against `QC_CLIENT_TOKEN` on the proxy. Baked into
-// the distributed app — not real security (a determined user can extract it
-// from the asar bundle), but blocks anonymous abuse of the proxy URL. Rotate
-// + reship when leaks are suspected. Real per-user auth replaces this later.
 const QC_CLIENT_TOKEN =
   process.env.QC_CLIENT_TOKEN || '08606d51e72936e8dc17d6dcd0481d2a5a0d97b0c825851b5189b2b95be91c06'
+
+const MAX_TOOL_STEPS = 10
+const MAX_FILE_BYTES = 1_000_000 // 1MB cap for tool reads
+const HIDDEN_DIRS = new Set(['.git', 'node_modules', '.next', 'out', 'dist', '.cache', '.turbo'])
 
 const inFlight = new Map<string, AbortController>()
 
 function send(wc: WebContents, channel: string, payload: unknown): void {
   if (!wc.isDestroyed()) wc.send(channel, payload)
+}
+
+export type ToolStatus = 'running' | 'done' | 'error'
+
+interface ToolStartPayload {
+  requestId: string
+  toolCallId: string
+  name: string
+  args: unknown
+  startedAt: number
+}
+
+interface ToolEndPayload {
+  requestId: string
+  toolCallId: string
+  status: Exclude<ToolStatus, 'running'>
+  result?: unknown
+  error?: string
+  durationMs: number
+}
+
+function sendToolStart(wc: WebContents, p: ToolStartPayload): void {
+  send(wc, 'chat:tool', { kind: 'start', ...p })
+}
+
+function sendToolEnd(wc: WebContents, p: ToolEndPayload): void {
+  send(wc, 'chat:tool', { kind: 'end', ...p })
+}
+
+let toolSeq = 0
+function genToolCallId(prefix: string): string {
+  toolSeq = (toolSeq + 1) >>> 0
+  return `${prefix}-${Date.now().toString(36)}-${toolSeq.toString(36)}`
+}
+
+// Resolve a project-relative path inside the active workspace, refusing any
+// path that escapes the root. Tools must never touch files outside the project.
+function resolveInProject(rel: string): string {
+  const root = getActiveProjectCwd()
+  const norm = rel.replace(/\\/g, '/').replace(/^\/+/, '')
+  const abs = resolve(root, norm)
+  const fromRoot = relative(root, abs)
+  if (fromRoot.startsWith('..' + sep) || fromRoot === '..') {
+    throw new Error(`path escapes project root: ${rel}`)
+  }
+  return abs
+}
+
+function systemPrompt(): string {
+  const cwd = getActiveProjectCwd()
+  return [
+    'You are the assistant inside QC Codeus, a desktop IDE.',
+    `The user's active project is at: ${cwd}`,
+    'You have tools to read files, write files, and list directories scoped to that project.',
+    'Use them proactively when the user asks about the codebase or asks you to make changes — do not refuse for lack of access.',
+    'When editing, write the FULL updated file contents to write_file (no patches).',
+    'After making changes, briefly summarize what you changed and which paths were touched.'
+  ].join(' ')
 }
 
 async function runStream(wc: WebContents, params: StartParams): Promise<void> {
@@ -52,9 +110,6 @@ async function runStream(wc: WebContents, params: StartParams): Promise<void> {
   inFlight.set(requestId, controller)
 
   try {
-    // @ai-sdk/openai-compatible sends `apiKey` as the Authorization header,
-    // which the proxy matches against QC_CLIENT_TOKEN before forwarding to
-    // AI Gateway with its own key.
     const provider = createOpenAICompatible({
       name: 'qc',
       baseURL: QC_PROXY_BASE_URL,
@@ -62,10 +117,122 @@ async function runStream(wc: WebContents, params: StartParams): Promise<void> {
     })
     const modelId = MODEL_MAP[model] ?? MODEL_MAP['sonnet-4.6']
 
+    // Wraps a tool's execute body so we emit structured start/end events to the
+    // renderer. The renderer turns these into action chips in the assistant bubble.
+    const traced = <A, R>(
+      name: string,
+      run: (args: A) => Promise<R>
+    ): ((args: A, opts?: { toolCallId?: string }) => Promise<R>) => {
+      return async (args, opts) => {
+        const toolCallId = opts?.toolCallId ?? genToolCallId(name)
+        const startedAt = Date.now()
+        sendToolStart(wc, { requestId, toolCallId, name, args, startedAt })
+        try {
+          const result = await run(args)
+          const errStr =
+            typeof result === 'object' && result !== null && 'error' in result
+              ? String((result as { error: unknown }).error)
+              : undefined
+          sendToolEnd(wc, {
+            requestId,
+            toolCallId,
+            status: errStr ? 'error' : 'done',
+            result,
+            error: errStr,
+            durationMs: Date.now() - startedAt
+          })
+          return result
+        } catch (e) {
+          const message = (e as Error)?.message || 'tool error'
+          sendToolEnd(wc, {
+            requestId,
+            toolCallId,
+            status: 'error',
+            error: message,
+            durationMs: Date.now() - startedAt
+          })
+          throw e
+        }
+      }
+    }
+
     const result = streamText({
       model: provider(modelId),
+      system: systemPrompt(),
       messages: messages as ModelMessage[],
-      abortSignal: controller.signal
+      stopWhen: stepCountIs(MAX_TOOL_STEPS),
+      abortSignal: controller.signal,
+      tools: {
+        read_file: tool({
+          description:
+            'Read a UTF-8 text file inside the current project. Paths are project-relative (e.g., "src/main/index.ts"). Returns the file contents or an error.',
+          inputSchema: z.object({
+            path: z.string().describe('Project-relative path to the file.')
+          }),
+          execute: traced('read_file', async ({ path }) => {
+            try {
+              const abs = resolveInProject(path)
+              const stat = await fs.stat(abs)
+              if (!stat.isFile()) return { error: 'not a file' }
+              if (stat.size > MAX_FILE_BYTES) {
+                return { error: `file too large (${stat.size} bytes; cap is ${MAX_FILE_BYTES})` }
+              }
+              const content = await fs.readFile(abs, 'utf8')
+              return { content }
+            } catch (e) {
+              return { error: (e as Error).message }
+            }
+          })
+        }),
+        write_file: tool({
+          description:
+            'Create or overwrite a UTF-8 text file inside the current project. Use only after you know what the file should contain — there is no undo. Paths are project-relative.',
+          inputSchema: z.object({
+            path: z.string().describe('Project-relative path to write.'),
+            content: z.string().describe('Full file contents.')
+          }),
+          execute: traced('write_file', async ({ path, content }) => {
+            try {
+              const abs = resolveInProject(path)
+              await fs.mkdir(resolve(abs, '..'), { recursive: true })
+              await fs.writeFile(abs, content, 'utf8')
+              return { ok: true, bytes: Buffer.byteLength(content, 'utf8') }
+            } catch (e) {
+              return { error: (e as Error).message }
+            }
+          })
+        }),
+        list_directory: tool({
+          description:
+            'List files and subdirectories at a project-relative path (empty string for the project root). Hidden dirs like .git and node_modules are skipped.',
+          inputSchema: z.object({
+            path: z.string().default('').describe('Project-relative directory path.')
+          }),
+          execute: traced('list_directory', async ({ path }) => {
+            try {
+              const abs = resolveInProject(path)
+              const dirents = await fs.readdir(abs, { withFileTypes: true })
+              const entries = dirents
+                .filter((d) => {
+                  if (d.isDirectory() && HIDDEN_DIRS.has(d.name)) return false
+                  return d.isDirectory() || d.isFile()
+                })
+                .map((d) => ({
+                  name: d.name,
+                  path: path ? posix.join(path, d.name) : d.name,
+                  type: d.isDirectory() ? 'dir' : 'file'
+                }))
+                .sort((a, b) => {
+                  if (a.type !== b.type) return a.type === 'dir' ? -1 : 1
+                  return a.name.localeCompare(b.name)
+                })
+              return { entries }
+            } catch (e) {
+              return { error: (e as Error).message }
+            }
+          })
+        })
+      }
     })
 
     for await (const delta of result.textStream) {

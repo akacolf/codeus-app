@@ -1,6 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, Copy, Pencil, RefreshCw, RotateCw, ThumbsDown, ThumbsUp } from 'lucide-react'
-import type { Chat, Message } from '@renderer/lib/chat'
+import {
+  Check,
+  ChevronRight,
+  Copy,
+  FileText,
+  FolderOpen,
+  Loader2,
+  Pencil,
+  PencilLine,
+  RefreshCw,
+  RotateCw,
+  Terminal,
+  ThumbsDown,
+  ThumbsUp,
+  TriangleAlert
+} from 'lucide-react'
+import type { Chat, Message, ToolPart } from '@renderer/lib/chat'
 import { cn } from '@renderer/lib/utils'
 import { Button } from '@renderer/components/ui/button'
 import { useChatStore, type ChatSettingsSnapshot } from '@renderer/stores/chatStore'
@@ -25,8 +40,9 @@ export function Thread({
   settings
 }: ThreadProps): React.JSX.Element {
   const scrollerRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
-  const [atBottom, setAtBottom] = useState(true)
+  const atBottomRef = useRef(true)
   const streaming = chat.streamingMessageId !== undefined
 
   const stopStreaming = useChatStore((s) => s.stopStreaming)
@@ -35,28 +51,36 @@ export function Thread({
   const retryAfterError = useChatStore((s) => s.retryAfterError)
 
   // Track whether the user is scrolled to the bottom — only auto-scroll when so.
+  // The flag lives in a ref so the ResizeObserver callback reads the latest
+  // value without re-subscribing on every scroll event.
   const onScroll = (): void => {
     const el = scrollerRef.current
     if (!el) return
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight
-    setAtBottom(distance <= AT_BOTTOM_TOLERANCE)
+    atBottomRef.current = distance <= AT_BOTTOM_TOLERANCE
   }
 
   // Reset to bottom when switching chats.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setAtBottom(true)
+    atBottomRef.current = true
     requestAnimationFrame(() => {
       endRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' })
     })
   }, [chat.id])
 
-  // While streaming or new messages arrive, only follow if user is at bottom.
+  // Follow streaming content. ResizeObserver fires whenever the inner content
+  // grows (token deltas, new tool chips, etc.); message-count change alone isn't
+  // enough because most streaming mutates an existing message in place.
   useEffect(() => {
-    if (atBottom) {
-      endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-    }
-  }, [chat.messages.length, atBottom])
+    const content = contentRef.current
+    if (!content) return
+    const observer = new ResizeObserver(() => {
+      if (!atBottomRef.current) return
+      endRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' })
+    })
+    observer.observe(content)
+    return () => observer.disconnect()
+  }, [chat.id])
 
   const handleRegenerate = (assistantId: string): void => regenerate(chat.id, assistantId, settings)
   const handleEdit = (messageId: string, text: string): void =>
@@ -66,7 +90,7 @@ export function Thread({
   return (
     <div className="flex h-full w-full flex-col">
       <div ref={scrollerRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto px-6">
-        <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 py-8">
+        <div ref={contentRef} className="mx-auto flex w-full max-w-2xl flex-col gap-5 py-8">
           {chat.messages.map((m) => (
             <MessageBubble
               key={m.id}
@@ -184,14 +208,35 @@ function MessageBubble({
     )
   }
 
+  const parts =
+    message.parts && message.parts.length > 0
+      ? message.parts
+      : message.text.length > 0
+        ? [{ kind: 'text' as const, text: message.text }]
+        : []
+
   return (
     <div className="group flex max-w-[85%] flex-col gap-1.5 self-start">
-      <div className="text-sm leading-relaxed text-foreground/90">
-        <Markdown text={message.text} />
-        {isStreaming && (
+      <div className="flex flex-col gap-3 text-sm leading-relaxed text-foreground/90">
+        {parts.map((p, i) =>
+          p.kind === 'text' ? (
+            <div key={`t-${i}`}>
+              <Markdown text={p.text} />
+              {isStreaming && i === parts.length - 1 && (
+                <span
+                  aria-hidden
+                  className="ml-1 inline-block size-2 translate-y-[-1px] animate-pulse rounded-full bg-foreground/70 align-middle"
+                />
+              )}
+            </div>
+          ) : (
+            <ActionChip key={p.toolCallId} tool={p} />
+          )
+        )}
+        {isStreaming && parts.length === 0 && (
           <span
             aria-hidden
-            className="ml-1 inline-block size-2 translate-y-[-1px] animate-pulse rounded-full bg-foreground/70 align-middle"
+            className="inline-block size-2 animate-pulse rounded-full bg-foreground/70"
           />
         )}
       </div>
@@ -207,6 +252,127 @@ function MessageBubble({
       )}
     </div>
   )
+}
+
+function toolLabel(tool: ToolPart): string {
+  const args = (tool.args ?? {}) as { path?: string; content?: string }
+  const path = args.path ?? ''
+  const present = tool.status === 'running'
+  switch (tool.name) {
+    case 'read_file':
+      return present ? `Reading ${path || 'file'}` : `Read ${path || 'file'}`
+    case 'write_file':
+      return present ? `Writing ${path || 'file'}` : `Wrote ${path || 'file'}`
+    case 'list_directory': {
+      const where = path ? path : '.'
+      if (present) return `Exploring ${where}`
+      const result = tool.result as { entries?: unknown[] } | undefined
+      const count = Array.isArray(result?.entries) ? result.entries.length : null
+      return count !== null
+        ? `Explored ${count} file${count === 1 ? '' : 's'}`
+        : `Explored ${where}`
+    }
+    default:
+      return present ? `Running ${tool.name}` : tool.name
+  }
+}
+
+function ToolIcon({ name }: { name: string }): React.JSX.Element {
+  const className = 'size-3.5'
+  if (name === 'read_file') return <FileText className={className} />
+  if (name === 'write_file') return <PencilLine className={className} />
+  if (name === 'list_directory') return <FolderOpen className={className} />
+  return <Terminal className={className} />
+}
+
+function ActionChip({ tool }: { tool: ToolPart }): React.JSX.Element {
+  const [open, setOpen] = useState(false)
+  const isError = tool.status === 'error'
+  const isRunning = tool.status === 'running'
+  const label = toolLabel(tool)
+  const hasDetails =
+    tool.args !== undefined || tool.result !== undefined || tool.error !== undefined
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <button
+        type="button"
+        onClick={() => hasDetails && setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-label={open ? `Hide ${label} details` : `Show ${label} details`}
+        className={cn(
+          'group/chip -ml-1 inline-flex w-fit max-w-full items-center gap-2 rounded-md px-1.5 py-0.5 text-[13px] text-muted-foreground transition-colors',
+          hasDetails && 'hover:bg-white/8 hover:text-foreground',
+          isError && 'text-foreground/70'
+        )}
+      >
+        <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">
+          {isRunning ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : isError ? (
+            <TriangleAlert className="size-3.5" />
+          ) : (
+            <ToolIcon name={tool.name} />
+          )}
+        </span>
+        <span className="truncate">{label}</span>
+        {hasDetails && (
+          <ChevronRight
+            aria-hidden
+            className={cn(
+              'size-3.5 shrink-0 text-muted-foreground/60 opacity-0 transition-[opacity,transform] group-hover/chip:opacity-100',
+              open && 'rotate-90 opacity-100'
+            )}
+          />
+        )}
+      </button>
+      {open && hasDetails && <ToolDetails tool={tool} />}
+    </div>
+  )
+}
+
+function ToolDetails({ tool }: { tool: ToolPart }): React.JSX.Element {
+  const argsText = tool.args !== undefined ? formatJson(tool.args) : null
+  const resultText = tool.result !== undefined ? formatJson(tool.result) : null
+  return (
+    <div className="ml-5 flex flex-col gap-2 rounded-lg bg-white/4 px-3 py-2 text-xs text-foreground/85">
+      {argsText && <DetailBlock title="Arguments" body={argsText} />}
+      {tool.error && <DetailBlock title="Error" body={tool.error} />}
+      {resultText && <DetailBlock title="Result" body={resultText} />}
+      {tool.durationMs !== undefined && (
+        <div className="text-[11px] text-muted-foreground">{formatDuration(tool.durationMs)}</div>
+      )}
+    </div>
+  )
+}
+
+function DetailBlock({ title, body }: { title: string; body: string }): React.JSX.Element {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="text-[11px] tracking-wide text-muted-foreground uppercase">{title}</div>
+      <pre className="max-h-64 overflow-auto rounded-md bg-black/40 px-2.5 py-2 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-foreground/85">
+        {body}
+      </pre>
+    </div>
+  )
+}
+
+function formatJson(value: unknown): string {
+  if (typeof value === 'string') return value
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`
+  const seconds = ms / 1000
+  if (seconds < 60) return `${seconds.toFixed(1)}s`
+  const m = Math.floor(seconds / 60)
+  const s = Math.round(seconds % 60)
+  return `${m}m ${s}s`
 }
 
 function ActionButton({

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
-import type { Chat, Message, View } from '../lib/chat'
+import type { Chat, Message, MessagePart, View } from '../lib/chat'
 import { deriveTitle, genId, loadChats, saveChats } from '../lib/chat'
 import type { ModelId } from '../lib/settings'
 import { recordChars, recordRequest } from '../lib/usage'
@@ -20,6 +20,9 @@ interface ChatStore {
   forward: () => void
   newChat: () => void
   openEditor: () => void
+  closeEditor: () => void
+  openSettings: () => void
+  closeSettings: () => void
   selectChat: (id: string) => void
   renameChat: (id: string, title: string) => void
   deleteChat: (id: string) => void
@@ -39,6 +42,13 @@ interface ChatStore {
 // One cancel handle per chat — concurrent streams in the same chat are not allowed;
 // a new send cancels the previous in-flight stream for that chat.
 const cancelByChatId = new Map<string, () => void>()
+
+function findPrior(history: View[], index: number, predicate: (v: View) => boolean): View {
+  for (let i = index - 1; i >= 0; i--) {
+    if (predicate(history[i])) return history[i]
+  }
+  return { type: 'home' }
+}
 
 export const useChatStore = create<ChatStore>()(
   subscribeWithSelector((set, get) => ({
@@ -69,6 +79,38 @@ export const useChatStore = create<ChatStore>()(
       if (history[index].type === 'editor') return
       set({
         history: [...history.slice(0, index + 1), { type: 'editor' }],
+        index: index + 1
+      })
+    },
+
+    // Closing an overlay view (editor / settings) pops history back to the
+    // most recent non-overlay view, or home if none exists. We push a new
+    // entry rather than calling back(), so forward navigation still works.
+    closeEditor: () => {
+      const { history, index } = get()
+      if (history[index].type !== 'editor') return
+      const prior = findPrior(history, index, (v) => v.type !== 'editor')
+      set({
+        history: [...history.slice(0, index + 1), prior],
+        index: index + 1
+      })
+    },
+
+    openSettings: () => {
+      const { history, index } = get()
+      if (history[index].type === 'settings') return
+      set({
+        history: [...history.slice(0, index + 1), { type: 'settings' }],
+        index: index + 1
+      })
+    },
+
+    closeSettings: () => {
+      const { history, index } = get()
+      if (history[index].type !== 'settings') return
+      const prior = findPrior(history, index, (v) => v.type !== 'settings')
+      set({
+        history: [...history.slice(0, index + 1), prior],
         index: index + 1
       })
     },
@@ -249,27 +291,89 @@ function startAssistantStream(
             streamingMessageId: assistantId,
             messages: [
               ...c.messages,
-              { id: assistantId, role: 'assistant', text: '', createdAt: Date.now() }
+              { id: assistantId, role: 'assistant', text: '', parts: [], createdAt: Date.now() }
             ]
           }
         : c
     )
   }))
 
-  const appendDelta = (delta: string): void => {
-    recordChars(delta.length)
+  // Map a message's existing parts after applying `update`. Used by all stream
+  // mutations so we never accidentally overwrite a parallel update path.
+  const mutateMessage = (update: (m: Message) => Message): void => {
     useChatStore.setState((s) => ({
       chats: s.chats.map((c) =>
         c.id === chatId
-          ? {
-              ...c,
-              messages: c.messages.map((m) =>
-                m.id === assistantId ? { ...m, text: m.text + delta } : m
-              )
-            }
+          ? { ...c, messages: c.messages.map((m) => (m.id === assistantId ? update(m) : m)) }
           : c
       )
     }))
+  }
+
+  const appendDelta = (delta: string): void => {
+    recordChars(delta.length)
+    mutateMessage((m) => {
+      const parts = m.parts ?? []
+      const last = parts[parts.length - 1]
+      const nextParts: MessagePart[] =
+        last && last.kind === 'text'
+          ? [...parts.slice(0, -1), { kind: 'text', text: last.text + delta }]
+          : [...parts, { kind: 'text', text: delta }]
+      return { ...m, text: m.text + delta, parts: nextParts }
+    })
+  }
+
+  const onToolStart = (e: {
+    toolCallId: string
+    name: string
+    args: unknown
+    startedAt: number
+  }): void => {
+    mutateMessage((m) => {
+      const parts = m.parts ?? []
+      // Avoid duplicates if the same start event somehow lands twice.
+      if (parts.some((p) => p.kind === 'tool' && p.toolCallId === e.toolCallId)) return m
+      return {
+        ...m,
+        parts: [
+          ...parts,
+          {
+            kind: 'tool',
+            toolCallId: e.toolCallId,
+            name: e.name,
+            status: 'running',
+            args: e.args,
+            startedAt: e.startedAt
+          }
+        ]
+      }
+    })
+  }
+
+  const onToolEnd = (e: {
+    toolCallId: string
+    status: 'done' | 'error'
+    result?: unknown
+    error?: string
+    durationMs: number
+  }): void => {
+    mutateMessage((m) => {
+      const parts = m.parts ?? []
+      return {
+        ...m,
+        parts: parts.map((p) =>
+          p.kind === 'tool' && p.toolCallId === e.toolCallId
+            ? {
+                ...p,
+                status: e.status,
+                result: e.result,
+                error: e.error,
+                durationMs: e.durationMs
+              }
+            : p
+        )
+      }
+    })
   }
 
   const finish = (errorMessage?: string): void => {
@@ -280,10 +384,32 @@ function startAssistantStream(
       chats: s.chats.map((c) => {
         if (c.id !== chatId) return c
         const next: Chat = { ...c, streamingMessageId: undefined }
+        // Any tool still 'running' when the stream ends was interrupted —
+        // mark it as errored so the UI doesn't keep spinning.
+        next.messages = c.messages.map((m) => {
+          if (m.id !== assistantId || !m.parts) return m
+          if (!m.parts.some((p) => p.kind === 'tool' && p.status === 'running')) return m
+          return {
+            ...m,
+            parts: m.parts.map((p) =>
+              p.kind === 'tool' && p.status === 'running'
+                ? { ...p, status: 'error', error: errorMessage ?? 'interrupted' }
+                : p
+            )
+          }
+        })
         if (errorMessage) {
           // Don't surface user-initiated cancellations as errors.
           if (errorMessage !== 'cancelled') next.error = errorMessage
-          next.messages = c.messages.filter((m) => !(m.id === assistantId && m.text.length === 0))
+          // Drop an empty assistant placeholder that produced neither text nor tool calls.
+          next.messages = next.messages.filter(
+            (m) =>
+              !(
+                m.id === assistantId &&
+                m.text.length === 0 &&
+                (m.parts === undefined || m.parts.length === 0)
+              )
+          )
         }
         return next
       })
@@ -299,6 +425,24 @@ function startAssistantStream(
     },
     {
       onChunk: appendDelta,
+      onTool: (e) => {
+        if (e.kind === 'start') {
+          onToolStart({
+            toolCallId: e.toolCallId,
+            name: e.name,
+            args: e.args,
+            startedAt: e.startedAt
+          })
+        } else {
+          onToolEnd({
+            toolCallId: e.toolCallId,
+            status: e.status,
+            result: e.result,
+            error: e.error,
+            durationMs: e.durationMs
+          })
+        }
+      },
       onDone: () => finish(),
       onError: (m) => finish(m)
     }
