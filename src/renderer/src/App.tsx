@@ -65,6 +65,7 @@ function App(): React.JSX.Element {
   const closeSettings = useChatStore((s) => s.closeSettings)
   const selectChat = useChatStore((s) => s.selectChat)
   const sendMessageAction = useChatStore((s) => s.sendMessage)
+  const queueMessageAction = useChatStore((s) => s.queueMessage)
 
   const activeChat = view.type === 'chat' ? (chats.find((c) => c.id === view.chatId) ?? null) : null
   const activeChatId = activeChat?.id
@@ -74,22 +75,35 @@ function App(): React.JSX.Element {
   const isEditor = view.type === 'editor'
   const isSettings = view.type === 'settings'
   const anyStreaming = chats.some((c) => c.streamingMessageId !== undefined)
+  const activeChatStreaming = activeChatStreamingMessageId !== undefined
 
   const sendMessage = useCallback(
-    (text: string) =>
-      sendMessageAction(text, {
+    (text: string) => {
+      const snapshot = {
         model: settings.model,
         workMode: settings.workMode,
         inferenceSpeed: settings.inferenceSpeed,
         projectCwd: settings.defaultProjectlessChat ? undefined : projectCwd
-      }),
+      }
+      // followUpBehavior === 'queue': park the message until the current
+      // stream wraps. 'steer' falls through to the cancel-and-restart path
+      // already baked into sendMessage.
+      if (settings.followUpBehavior === 'queue' && activeChatStreaming) {
+        queueMessageAction(text, snapshot)
+        return
+      }
+      sendMessageAction(text, snapshot)
+    },
     [
       sendMessageAction,
+      queueMessageAction,
       settings.model,
       settings.workMode,
       settings.inferenceSpeed,
+      settings.followUpBehavior,
       settings.defaultProjectlessChat,
-      projectCwd
+      projectCwd,
+      activeChatStreaming
     ]
   )
 
@@ -142,9 +156,14 @@ function App(): React.JSX.Element {
     }
     if (lastNotifiedMessageIdRef.current === activeChatLastMessage.id) return
     if (!('Notification' in window)) return
+    // If the assistant ended on a question, defer to the question-notification
+    // setting; otherwise it's a plain completion.
+    const endsWithQuestion = /\?\s*$/.test(activeChatLastMessage.text.trimEnd())
+    if (endsWithQuestion && !settings.questionNotifications) return
     if (Notification.permission === 'granted') {
       lastNotifiedMessageIdRef.current = activeChatLastMessage.id
-      new Notification('QC Codeus finished', { body: activeChatTitle })
+      const title = endsWithQuestion ? 'QC Codeus has a question' : 'QC Codeus finished'
+      new Notification(title, { body: activeChatTitle })
     } else if (settings.permissionNotifications && Notification.permission === 'default') {
       void Notification.requestPermission()
     }
@@ -155,6 +174,7 @@ function App(): React.JSX.Element {
     activeChatLastMessage,
     settings.completionNotifications,
     settings.permissionNotifications,
+    settings.questionNotifications,
     wasWindowFocused
   ])
 

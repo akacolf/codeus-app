@@ -98,13 +98,6 @@ export const FOLLOW_UP_BEHAVIORS = [
 
 export type FollowUpBehavior = (typeof FOLLOW_UP_BEHAVIORS)[number]['id']
 
-export const CODE_REVIEW_MODES = [
-  { id: 'inline', label: 'Inline' },
-  { id: 'detached', label: 'Detached' }
-] as const
-
-export type CodeReviewMode = (typeof CODE_REVIEW_MODES)[number]['id']
-
 export const CHAT_DENSITIES = [
   { id: 'comfortable', label: 'Comfortable' },
   { id: 'compact', label: 'Compact' },
@@ -184,7 +177,6 @@ interface Settings {
   questionNotifications: boolean
   inferenceSpeed: InferenceSpeed
   followUpBehavior: FollowUpBehavior
-  codeReviewMode: CodeReviewMode
   uiScale: UiScaleId
   editorFontSize: CodeFontSize
   terminalFontSize: CodeFontSize
@@ -217,7 +209,6 @@ const DEFAULTS: Settings = {
   questionNotifications: true,
   inferenceSpeed: 'standard',
   followUpBehavior: 'queue',
-  codeReviewMode: 'inline',
   uiScale: 'default',
   editorFontSize: 13,
   terminalFontSize: 13,
@@ -258,7 +249,6 @@ const settingsSchema = z.object({
   questionNotifications: z.boolean().catch(DEFAULTS.questionNotifications),
   inferenceSpeed: z.enum(['standard', 'fast', 'deliberate']).catch(DEFAULTS.inferenceSpeed),
   followUpBehavior: z.enum(['queue', 'steer']).catch(DEFAULTS.followUpBehavior),
-  codeReviewMode: z.enum(['inline', 'detached']).catch(DEFAULTS.codeReviewMode),
   uiScale: z.enum(['small', 'default', 'large']).catch(DEFAULTS.uiScale),
   editorFontSize: z.union([z.literal(12), z.literal(13), z.literal(14), z.literal(15)]).catch(13),
   terminalFontSize: z.union([z.literal(12), z.literal(13), z.literal(14), z.literal(15)]).catch(13),

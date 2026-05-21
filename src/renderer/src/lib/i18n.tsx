@@ -62,7 +62,19 @@ const EN: Messages = {
       notifyUnfocused: 'Only when unfocused',
       notifyAlways: 'Always',
       notifyNever: 'Never',
-      permissionNotifications: 'Enable permission notifications'
+      permissionNotifications: 'Enable permission notifications',
+      questionNotifications: 'Alert when QC Codeus asks a question',
+      followUp: 'Follow-up while streaming',
+      followUpHint: 'What happens when you send a new message mid-reply.',
+      followUpQueue: 'Queue',
+      followUpQueueHint: 'Send after the current reply finishes.',
+      followUpSteer: 'Steer',
+      followUpSteerHint: 'Cancel the current reply and start over with your new prompt.',
+      openDestination: 'Open files in',
+      openDestinationHint: 'Where citations and file references open by default.',
+      openEditor: 'Editor',
+      openTerminal: 'Terminal',
+      openFinder: 'Finder'
     },
     appearance: {
       title: 'Appearance',

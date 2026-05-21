@@ -225,9 +225,15 @@ async function runStream(wc: WebContents, params: StartParams): Promise<void> {
           execute: traced('write_file', async ({ path, content }) => {
             try {
               const abs = resolveInProject(path)
+              let existed = true
+              try {
+                await fs.access(abs)
+              } catch {
+                existed = false
+              }
               await fs.mkdir(resolve(abs, '..'), { recursive: true })
               await fs.writeFile(abs, content, 'utf8')
-              return { ok: true, bytes: Buffer.byteLength(content, 'utf8') }
+              return { ok: true, bytes: Buffer.byteLength(content, 'utf8'), created: !existed }
             } catch (e) {
               return { error: (e as Error).message }
             }

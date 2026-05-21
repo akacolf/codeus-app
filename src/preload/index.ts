@@ -318,6 +318,10 @@ const api = {
     setPreventSleep: (active: boolean): Promise<{ ok: true }> =>
       ipcRenderer.invoke('power-save:set-prevent-sleep', active)
   },
+  shell: {
+    revealPath: (relPath: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke('shell:reveal-path', relPath)
+  },
   onChromeState,
   chat: { start: startChat },
   fs: fsBridge,

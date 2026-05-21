@@ -2,7 +2,7 @@ import { app, shell, BrowserWindow, ipcMain, nativeImage, powerSaveBlocker, scre
 import { spawn, spawnSync } from 'child_process'
 import { readFileSync, writeFileSync } from 'fs'
 import { userInfo } from 'os'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { registerChatIpc } from './chat'
@@ -153,6 +153,21 @@ async function revealInFolder(): Promise<{ ok: boolean }> {
   return { ok: true }
 }
 
+function resolveProjectRelative(relPath: string): string | null {
+  const root = projectCwd()
+  const abs = resolve(root, relPath)
+  // Must stay inside the project root — never reveal arbitrary paths.
+  if (!abs.startsWith(root)) return null
+  return abs
+}
+
+async function revealPath(relPath: string): Promise<{ ok: boolean }> {
+  const abs = resolveProjectRelative(relPath)
+  if (!abs) return { ok: false }
+  shell.showItemInFolder(abs)
+  return { ok: true }
+}
+
 function createWindow(): void {
   const saved = loadWindowState()
   const mainWindow = new BrowserWindow({
@@ -264,6 +279,9 @@ app.whenReady().then(() => {
   ipcMain.handle('git-branch', () => gitBranch())
   ipcMain.handle('power-save:set-prevent-sleep', (_event, active: boolean) =>
     setPreventSleep(Boolean(active))
+  )
+  ipcMain.handle('shell:reveal-path', (_event, rel: string) =>
+    revealPath(typeof rel === 'string' ? rel : '')
   )
   registerProjectIpc()
   registerChatIpc()

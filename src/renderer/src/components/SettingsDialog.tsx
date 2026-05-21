@@ -42,6 +42,8 @@ import {
   type CompletionNotificationMode,
   type ComposerSize,
   type ComposerSubmitMode,
+  type DefaultOpenDestination,
+  type FollowUpBehavior,
   type FontFamily,
   type InferenceSpeed,
   type LanguageId,
@@ -180,6 +182,15 @@ function GeneralSection(): React.JSX.Element {
     { id: 'always', label: t('notifyAlways') },
     { id: 'never', label: t('notifyNever') }
   ] as const
+  const followUpItems = [
+    { id: 'queue', label: t('followUpQueue'), hint: t('followUpQueueHint') },
+    { id: 'steer', label: t('followUpSteer'), hint: t('followUpSteerHint') }
+  ] as const
+  const openDestinationItems = [
+    { id: 'editor', label: t('openEditor') },
+    { id: 'terminal', label: t('openTerminal') },
+    { id: 'finder', label: t('openFinder') }
+  ] as const
 
   return (
     <>
@@ -274,6 +285,27 @@ function GeneralSection(): React.JSX.Element {
           label={t('permissionNotifications')}
           checked={settings.permissionNotifications}
           onChange={(checked) => set('permissionNotifications', checked)}
+        />
+        <ToggleRow
+          label={t('questionNotifications')}
+          checked={settings.questionNotifications}
+          onChange={(checked) => set('questionNotifications', checked)}
+        />
+      </Field>
+      <Field icon={MessageSquare} title={t('followUp')} hint={t('followUpHint')}>
+        <ChoiceGrid
+          columns="grid-cols-1 sm:grid-cols-2"
+          items={followUpItems}
+          selectedId={settings.followUpBehavior}
+          onSelect={(id) => set('followUpBehavior', id as FollowUpBehavior)}
+        />
+      </Field>
+      <Field icon={Plug} title={t('openDestination')} hint={t('openDestinationHint')}>
+        <ChoiceGrid
+          columns="grid-cols-3"
+          items={openDestinationItems}
+          selectedId={settings.defaultOpenDestination}
+          onSelect={(id) => set('defaultOpenDestination', id as DefaultOpenDestination)}
         />
       </Field>
     </>

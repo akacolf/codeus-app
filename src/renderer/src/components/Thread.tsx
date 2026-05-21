@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  ExternalLink,
   FileText,
   Loader2,
   Pencil,
@@ -15,7 +16,8 @@ import {
   Terminal,
   ThumbsDown,
   ThumbsUp,
-  TriangleAlert
+  TriangleAlert,
+  X
 } from 'lucide-react'
 import { FileIcon } from './FileIcon'
 import type { Chat, Message, MessagePart, TextPart, ToolPart } from '@renderer/lib/chat'
@@ -62,6 +64,8 @@ export function Thread({
   const regenerate = useChatStore((s) => s.regenerate)
   const editUserMessage = useChatStore((s) => s.editUserMessage)
   const retryAfterError = useChatStore((s) => s.retryAfterError)
+  const cancelQueued = useChatStore((s) => s.cancelQueued)
+  const queued = useChatStore((s) => s.queued[chat.id]) ?? []
   const { settings: uiSettings } = useSettings()
   const messageGap =
     uiSettings.chatDensity === 'compact'
@@ -186,6 +190,29 @@ export function Thread({
               <ArrowDown className="size-4" />
             </button>
           )}
+          {queued.length > 0 && (
+            <div className="flex w-full flex-col gap-1 rounded-2xl bg-card/90 p-2 text-xs backdrop-blur">
+              <div className="px-2 pt-1 text-muted-foreground">
+                Queued · sends after the current reply finishes
+              </div>
+              {queued.map((q, i) => (
+                <div
+                  key={`${q.text.slice(0, 12)}-${i}`}
+                  className="flex items-start gap-2 rounded-lg bg-foreground/4 px-2 py-1.5"
+                >
+                  <span className="line-clamp-2 flex-1 text-foreground/85">{q.text}</span>
+                  <button
+                    type="button"
+                    onClick={() => cancelQueued(chat.id, i)}
+                    aria-label="Cancel queued message"
+                    className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-foreground/8 hover:text-foreground"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <Composer
             draft={draft}
             onDraftChange={onDraftChange}
@@ -308,7 +335,7 @@ function MessageBubble({
         )}
         {isStreaming && parts.length === 0 && <ThinkingIndicator />}
       </div>
-      {!isStreaming && refs.length > 0 && <FileReferences paths={refs} />}
+      {!isStreaming && refs.length > 0 && <FileReferences refs={refs} />}
       {!isStreaming && message.text.length > 0 && (
         <div className="flex items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
           <CopyAction text={message.text} />
@@ -645,21 +672,42 @@ function formatMessageTime(ts: number): string {
   return `${date}, ${time}`
 }
 
+export type FileRefStatus = 'created' | 'modified' | 'read'
+
+export interface FileRef {
+  path: string
+  status: FileRefStatus
+}
+
 // Pull file paths touched by this assistant turn out of its tool parts.
-// Dedup by path, prefer the latest (write supersedes read).
-function extractReferencedFiles(parts: MessagePart[] | undefined): string[] {
+// Dedup by path; later events win (write supersedes a prior read; a created
+// flag from the write tool result upgrades the status to 'created').
+function extractReferencedFiles(parts: MessagePart[] | undefined): FileRef[] {
   if (!parts) return []
-  const seen = new Map<string, number>()
+  const order = new Map<string, number>()
+  const status = new Map<string, FileRefStatus>()
   for (let i = 0; i < parts.length; i++) {
     const p = parts[i]
     if (p.kind !== 'tool') continue
     if (p.status !== 'done') continue
     const args = (p.args ?? {}) as { path?: string }
-    if (p.name === 'read_file' || p.name === 'write_file') {
-      if (typeof args.path === 'string' && args.path.length > 0) seen.set(args.path, i)
+    if (typeof args.path !== 'string' || args.path.length === 0) continue
+    if (p.name === 'read_file') {
+      if (!status.has(args.path)) {
+        status.set(args.path, 'read')
+        order.set(args.path, i)
+      }
+      continue
+    }
+    if (p.name === 'write_file') {
+      const result = p.result as { created?: boolean } | undefined
+      status.set(args.path, result?.created ? 'created' : 'modified')
+      order.set(args.path, i)
     }
   }
-  return [...seen.entries()].sort((a, b) => a[1] - b[1]).map(([path]) => path)
+  return [...order.entries()]
+    .sort((a, b) => a[1] - b[1])
+    .map(([path]) => ({ path, status: status.get(path) ?? 'read' }))
 }
 
 function basename(p: string): string {
@@ -696,24 +744,34 @@ function describeFile(p: string): string {
   return `${kind} · ${ext.toUpperCase()}`
 }
 
-function FileReferences({ paths }: { paths: string[] }): React.JSX.Element {
+function FileReferences({ refs }: { refs: FileRef[] }): React.JSX.Element {
   return (
     <div className="flex flex-col divide-y divide-foreground/8 rounded-xl bg-foreground/4">
-      {paths.map((p) => (
-        <FileReferenceRow key={p} path={p} />
+      {refs.map((ref) => (
+        <FileReferenceRow key={ref.path} path={ref.path} status={ref.status} />
       ))}
     </div>
   )
 }
 
-function FileReferenceRow({ path }: { path: string }): React.JSX.Element {
+function FileReferenceRow({
+  path,
+  status
+}: {
+  path: string
+  status: FileRefStatus
+}): React.JSX.Element {
   const openEditor = useChatStore((s) => s.openEditor)
   const openFile = useWorkspaceStore((s) => s.openFile)
+  const { settings } = useSettings()
   const [copied, setCopied] = useState(false)
 
-  const handleOpenInEditor = (): void => {
+  const openInEditor = (): void => {
     openEditor()
     void openFile(path)
+  }
+  const revealInFinder = (): void => {
+    void window.api.shell.revealPath(path)
   }
   const handleCopyPath = (): void => {
     void navigator.clipboard.writeText(path).then(() => {
@@ -721,19 +779,44 @@ function FileReferenceRow({ path }: { path: string }): React.JSX.Element {
       setTimeout(() => setCopied(false), 1400)
     })
   }
-  const handleReveal = (): void => {
-    void window.api.revealInFolder()
+  const handlePrimary = (): void => {
+    if (settings.defaultOpenDestination === 'finder') revealInFinder()
+    else openInEditor()
   }
 
+  const statusBadge =
+    status === 'created' ? (
+      <span
+        aria-label="Newly created"
+        title="Newly created"
+        className="ml-0.5 inline-block size-1.5 shrink-0 rounded-full bg-sky-400"
+      />
+    ) : null
+
   return (
-    <div className="flex items-center gap-3 px-3 py-2.5">
+    <div className="group/file flex items-center gap-3 px-3 py-2.5">
       <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-foreground/6">
         <FileIcon path={path} monochrome className="size-4 text-muted-foreground" />
       </span>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[13px] font-medium text-foreground/95">{basename(path)}</div>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate text-[13px] font-medium text-foreground/95">
+            {basename(path)}
+          </span>
+          {statusBadge}
+        </div>
         <div className="truncate text-[11.5px] text-muted-foreground">{describeFile(path)}</div>
       </div>
+      <button
+        type="button"
+        onClick={handlePrimary}
+        aria-label={
+          settings.defaultOpenDestination === 'finder' ? 'Reveal in folder' : 'Open in editor'
+        }
+        className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-foreground/8 hover:text-foreground focus-visible:opacity-100 group-hover/file:opacity-100"
+      >
+        <ExternalLink className="size-3.5" />
+      </button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -746,8 +829,8 @@ function FileReferenceRow({ path }: { path: string }): React.JSX.Element {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-[180px]">
-          <DropdownMenuItem onSelect={handleOpenInEditor}>Open in editor</DropdownMenuItem>
-          <DropdownMenuItem onSelect={handleReveal}>Reveal in folder</DropdownMenuItem>
+          <DropdownMenuItem onSelect={openInEditor}>Open in editor</DropdownMenuItem>
+          <DropdownMenuItem onSelect={revealInFinder}>Reveal in folder</DropdownMenuItem>
           <DropdownMenuItem onSelect={handleCopyPath}>Copy path</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

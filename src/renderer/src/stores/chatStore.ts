@@ -12,10 +12,18 @@ export interface ChatSettingsSnapshot {
   projectCwd?: string
 }
 
+export interface QueuedMessage {
+  chatId: string
+  text: string
+  settings: ChatSettingsSnapshot
+}
+
 interface ChatStore {
   chats: Chat[]
   history: View[]
   index: number
+  // Pending follow-up messages keyed by chatId, used when followUpBehavior === 'queue'.
+  queued: Record<string, QueuedMessage[]>
 
   navigate: (next: View) => void
   back: () => void
@@ -30,6 +38,8 @@ interface ChatStore {
   deleteChat: (id: string) => void
 
   sendMessage: (text: string, settings: ChatSettingsSnapshot) => void
+  queueMessage: (text: string, settings: ChatSettingsSnapshot) => void
+  cancelQueued: (chatId: string, index: number) => void
   editUserMessage: (
     chatId: string,
     messageId: string,
@@ -57,6 +67,7 @@ export const useChatStore = create<ChatStore>()(
     chats: loadChats(),
     history: [{ type: 'home' }],
     index: 0,
+    queued: {},
 
     navigate: (next) => {
       const { history, index } = get()
@@ -142,7 +153,10 @@ export const useChatStore = create<ChatStore>()(
         const history = s.history.filter((v) => !(v.type === 'chat' && v.chatId === id))
         const trimmedHistory = history.length === 0 ? [{ type: 'home' as const }] : history
         const index = Math.min(s.index, trimmedHistory.length - 1)
-        return { chats, history: trimmedHistory, index }
+        // Drop any pending queue entries for this chat.
+        const queued = { ...s.queued }
+        delete queued[id]
+        return { chats, history: trimmedHistory, index, queued }
       })
     },
 
@@ -264,6 +278,35 @@ export const useChatStore = create<ChatStore>()(
       const { history, index } = get()
       const view = history[index]
       if (view.type === 'chat') cancelChatStream(view.chatId)
+    },
+
+    queueMessage: (text, settings) => {
+      const trimmed = text.trim()
+      if (!trimmed) return
+      const { history, index } = get()
+      const view = history[index]
+      // Queueing only makes sense inside an active chat — fall back to send.
+      if (view.type !== 'chat') {
+        get().sendMessage(trimmed, settings)
+        return
+      }
+      const chatId = view.chatId
+      const entry: QueuedMessage = { chatId, text: trimmed, settings }
+      set((s) => ({
+        queued: { ...s.queued, [chatId]: [...(s.queued[chatId] ?? []), entry] }
+      }))
+    },
+
+    cancelQueued: (chatId, idx) => {
+      set((s) => {
+        const list = s.queued[chatId]
+        if (!list || idx < 0 || idx >= list.length) return s
+        const next = [...list.slice(0, idx), ...list.slice(idx + 1)]
+        const queued = { ...s.queued }
+        if (next.length === 0) delete queued[chatId]
+        else queued[chatId] = next
+        return { queued }
+      })
     }
   }))
 )
@@ -382,6 +425,34 @@ function startAssistantStream(
     // Only clear the handle if it's still pointing at this stream — a follow-up
     // send might have already installed a new one.
     if (cancelByChatId.get(chatId) === cancel) cancelByChatId.delete(chatId)
+    // If a queued follow-up is waiting and the stream finished cleanly,
+    // pop the next entry and kick off another turn. Errored / cancelled
+    // streams discard their queue so the user can reassess.
+    if (!errorMessage) {
+      const pending = useChatStore.getState().queued[chatId] ?? []
+      if (pending.length > 0) {
+        const [next, ...rest] = pending
+        useChatStore.setState((s) => {
+          const queued = { ...s.queued }
+          if (rest.length === 0) delete queued[chatId]
+          else queued[chatId] = rest
+          return { queued }
+        })
+        // Schedule the next send after the current finish state lands so the
+        // streamingMessageId clearout doesn't race the new assistant placeholder.
+        queueMicrotask(() => {
+          useChatStore.getState().sendMessage(next.text, next.settings)
+        })
+      }
+    } else if (errorMessage !== 'cancelled') {
+      // Drop the queue on hard errors — the user should see the failure first.
+      useChatStore.setState((s) => {
+        if (!s.queued[chatId]) return s
+        const queued = { ...s.queued }
+        delete queued[chatId]
+        return { queued }
+      })
+    }
     useChatStore.setState((s) => ({
       chats: s.chats.map((c) => {
         if (c.id !== chatId) return c

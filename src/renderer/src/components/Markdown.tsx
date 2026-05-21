@@ -217,14 +217,23 @@ function Citation({
 }): React.JSX.Element {
   const openEditor = useChatStore((s) => s.openEditor)
   const revealInEditor = useWorkspaceStore((s) => s.revealInEditor)
+  const { settings } = useSettings()
+  const onClick = (): void => {
+    if (settings.defaultOpenDestination === 'finder') {
+      void window.api.shell.revealPath(path)
+      return
+    }
+    // 'editor' (default) and 'terminal' both land in the editor pane —
+    // the terminal panel is a singleton overlay that the toolbar opens
+    // independently, so jumping to source is the most useful default.
+    openEditor()
+    void revealInEditor(path, line)
+  }
   return (
     <button
       type="button"
       title={`${path} (line ${line})`}
-      onClick={() => {
-        openEditor()
-        void revealInEditor(path, line)
-      }}
+      onClick={onClick}
       className="inline-flex items-baseline gap-1 align-baseline text-[0.95em] text-foreground/90 underline decoration-foreground/30 decoration-1 underline-offset-2 transition-colors hover:text-foreground hover:decoration-foreground/55"
     >
       <FileTypeBadge path={path} />
