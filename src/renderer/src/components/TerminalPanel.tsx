@@ -37,6 +37,15 @@ const THEME = {
 
 interface Tab {
   id: string
+  label: string
+}
+
+function defaultShellLabel(): string {
+  if (typeof navigator === 'undefined') return 'shell'
+  const platform = navigator.platform || ''
+  if (/Win/i.test(platform)) return 'pwsh'
+  if (/Mac/i.test(platform)) return 'zsh'
+  return 'bash'
 }
 
 const DEFAULT_HEIGHT = 200
@@ -66,8 +75,9 @@ export function TerminalPanel({ open, onClose }: TerminalPanelProps): React.JSX.
     if (open && tabs.length === 0) {
       const id = genId()
       counterRef.current = 1
+      const label = `${defaultShellLabel()} 1`
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setTabs([{ id }])
+      setTabs([{ id, label }])
       setActiveId(id)
     }
   }, [open, tabs.length])
@@ -91,26 +101,29 @@ export function TerminalPanel({ open, onClose }: TerminalPanelProps): React.JSX.
   const addTab = (): void => {
     counterRef.current += 1
     const id = genId()
-    setTabs((t) => [...t, { id }])
+    const label = `${defaultShellLabel()} ${counterRef.current}`
+    setTabs((t) => [...t, { id, label }])
     setActiveId(id)
   }
 
   const closeTab = (id: string): void => {
-    setTabs((current) => {
-      const next = current.filter((t) => t.id !== id)
-      if (next.length === 0) {
-        setActiveId(null)
-        // Defer panel close to after state commits.
-        queueMicrotask(onClose)
-        return next
-      }
-      if (id === activeId) {
-        const idx = current.findIndex((t) => t.id === id)
-        const fallback = next[Math.min(idx, next.length - 1)]
-        setActiveId(fallback.id)
-      }
-      return next
-    })
+    // Compute next state up-front so we never call a state setter from inside
+    // another setter (StrictMode warns; future React may break).
+    const current = tabs
+    const next = current.filter((t) => t.id !== id)
+    if (next.length === 0) {
+      setTabs(next)
+      setActiveId(null)
+      queueMicrotask(onClose)
+      return
+    }
+    let nextActive = activeId
+    if (id === activeId) {
+      const idx = current.findIndex((t) => t.id === id)
+      nextActive = next[Math.min(idx, next.length - 1)].id
+    }
+    setTabs(next)
+    if (nextActive !== activeId) setActiveId(nextActive)
   }
 
   const onResizeStart = useCallback(
@@ -164,10 +177,10 @@ export function TerminalPanel({ open, onClose }: TerminalPanelProps): React.JSX.
       />
       <div className="flex h-8 shrink-0 items-center gap-0.5 pr-1 pl-1.5">
         <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
-          {tabs.map((t, i) => (
+          {tabs.map((t) => (
             <TerminalTab
               key={t.id}
-              label={`zsh ${i + 1}`}
+              label={t.label}
               active={t.id === activeId}
               onSelect={() => setActiveId(t.id)}
               onClose={() => closeTab(t.id)}

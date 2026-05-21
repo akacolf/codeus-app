@@ -75,7 +75,7 @@ Components land in `src/renderer/src/components/ui/`. After install, audit for b
 
 ## In-flight work / known follow-ups
 
-- **Editor pane is gone for now.** `Editor.tsx` and `AgentPanel.tsx` were removed when the home pivoted to a chat-first surface. Monaco is still in `package.json` for when the IDE pane returns; don't strip it without confirming.
+- **Editor pane is back.** `Workspace.tsx`, `EditorPane.tsx`, and `FileTree.tsx` are wired and rendered for `view.type === 'editor'`. Monaco is the surface. Dirty-state warns on app close (`beforeunload`) and on auto-update restart.
 - **No test runner yet** — when one is needed, ask the user before picking (Vitest is the natural fit given Vite + Zustand).
 - **Code signing / notarization / auto-update** are not configured in `electron-builder.yml`. CI builds are unsigned; shipping outside `bun run build:unpack` will need this before distribution.
 - **CI** lives at `.github/workflows/ci.yml`: a single `check` job (typecheck + lint on Ubuntu) gates a `build` matrix that runs `electron-vite build` on `ubuntu-latest`, `macos-latest`, and `windows-latest`. It does not yet produce signed installers — wire that when release pipelines are needed.

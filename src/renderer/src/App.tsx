@@ -20,6 +20,7 @@ import {
 import { useSettings } from './lib/settings'
 import { matchShortcut } from './lib/shortcuts'
 import { useChatStore } from './stores/chatStore'
+import { isDirty, useWorkspaceStore } from './stores/workspaceStore'
 
 function revealInFolder(): void {
   void window.api.revealInFolder()
@@ -34,12 +35,15 @@ function App(): React.JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
+  const [connectOpen, setConnectOpen] = useState(false)
   const [terminalOpen, setTerminalOpen] = useState(false)
   const [chrome, setChrome] = useState<{ fullscreen: boolean; maximized: boolean }>({
     fullscreen: false,
     maximized: false
   })
   const [projectCwd, setProjectCwd] = useState<string | undefined>(undefined)
+  // Hoisted draft survives Home ↔ Thread transitions.
+  const [draft, setDraft] = useState('')
   const { settings } = useSettings()
 
   const chats = useChatStore((s) => s.chats)
@@ -52,7 +56,6 @@ function App(): React.JSX.Element {
   const openEditor = useChatStore((s) => s.openEditor)
   const selectChat = useChatStore((s) => s.selectChat)
   const sendMessageAction = useChatStore((s) => s.sendMessage)
-  const stopStreaming = useChatStore((s) => s.stopStreaming)
 
   const activeChat = view.type === 'chat' ? (chats.find((c) => c.id === view.chatId) ?? null) : null
   const isEditor = view.type === 'editor'
@@ -62,10 +65,26 @@ function App(): React.JSX.Element {
     [sendMessageAction, settings.model, projectCwd]
   )
 
+  const settingsSnapshot = { model: settings.model, projectCwd }
+
   useEffect(() => {
     void window.api.projectCwd().then(setProjectCwd)
     const unsub = window.api.onChromeState((s) => setChrome(s))
     return unsub
+  }, [])
+
+  // Warn before unload when any editor tab has unsaved changes. Electron honors
+  // `event.returnValue = ''` and surfaces the native confirm dialog.
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent): void => {
+      const open = useWorkspaceStore.getState().open
+      if (open.some(isDirty)) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return (): void => window.removeEventListener('beforeunload', onBeforeUnload)
   }, [])
 
   useEffect(() => {
@@ -126,12 +145,21 @@ function App(): React.JSX.Element {
         {isEditor ? (
           <Workspace />
         ) : activeChat ? (
-          <Thread chat={activeChat} onSubmit={sendMessage} onStop={stopStreaming} />
+          <Thread
+            chat={activeChat}
+            draft={draft}
+            onDraftChange={setDraft}
+            onSubmit={sendMessage}
+            settings={settingsSnapshot}
+          />
         ) : (
           <Home
+            draft={draft}
+            onDraftChange={setDraft}
             onSubmit={sendMessage}
             onOpenTerminal={() => setTerminalOpen(true)}
             onReveal={revealInFolder}
+            onOpenConnectTool={() => setConnectOpen(true)}
           />
         )}
         <TerminalPanel open={terminalOpen} onClose={() => setTerminalOpen(false)} />
@@ -176,6 +204,40 @@ function App(): React.JSX.Element {
           <p className="text-sm leading-relaxed text-foreground/85">
             Built by Quantum Club. This is a research preview — agent execution, IPC streaming, and
             the editor pane are still landing.
+          </p>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={connectOpen} onOpenChange={setConnectOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Connect a tool</DialogTitle>
+            <DialogDescription>
+              Tool integrations are on the roadmap — first-class connectors aren’t live yet.
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="flex flex-col gap-2 text-sm text-foreground/85">
+            <li className="rounded-lg bg-white/5 px-3 py-2">
+              Linear — pull issues, file tickets from a thread
+            </li>
+            <li className="rounded-lg bg-white/5 px-3 py-2">
+              GitHub — open PRs, comment, run checks
+            </li>
+            <li className="rounded-lg bg-white/5 px-3 py-2">
+              Vercel — deploy, inspect logs, read env
+            </li>
+          </ul>
+          <p className="text-xs text-muted-foreground">
+            Want one of these sooner?{' '}
+            <a
+              href="https://github.com/atomicfield/qc-codeus/issues"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="underline underline-offset-2"
+            >
+              Open an issue
+            </a>
+            .
           </p>
         </DialogContent>
       </Dialog>

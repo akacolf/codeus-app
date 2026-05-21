@@ -8,6 +8,7 @@ import {
   Keyboard,
   PanelLeft,
   PanelLeftOpen,
+  RefreshCw,
   Settings,
   SquarePen,
   Terminal
@@ -134,17 +135,16 @@ export function Toolbar({
 
           <DropdownMenuSeparator />
 
+          <DropdownMenuItem onSelect={() => void window.api.updater.check()}>
+            <RefreshCw />
+            <span>Check for updates</span>
+          </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => onOpenAbout?.()} disabled={!onOpenAbout}>
             <Info />
             <span>About QC Codeus</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-
-      <div aria-hidden className="mx-1 h-4 w-px bg-white/12" />
-      <ChromeButton label="Settings" onClick={onOpenSettings} disabled={!onOpenSettings}>
-        <Settings />
-      </ChromeButton>
     </div>
   )
 }

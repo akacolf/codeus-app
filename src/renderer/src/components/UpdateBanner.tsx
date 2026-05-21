@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Download, RefreshCw, X } from 'lucide-react'
+import { AlertCircle, Download, RefreshCw, X } from 'lucide-react'
+import { ConfirmDialog } from './ConfirmDialog'
+import { isDirty, useWorkspaceStore } from '@renderer/stores/workspaceStore'
 
 type UpdaterState =
   | { kind: 'idle' }
@@ -13,14 +15,26 @@ type UpdaterState =
 export function UpdateBanner(): React.JSX.Element | null {
   const [state, setState] = useState<UpdaterState>({ kind: 'idle' })
   const [dismissed, setDismissed] = useState(false)
+  const [confirmRestart, setConfirmRestart] = useState(false)
 
   useEffect(() => {
     void window.api.updater.getState().then(setState)
     return window.api.updater.onState((s) => {
       setState(s)
-      if (s.kind === 'ready' || s.kind === 'downloading') setDismissed(false)
+      if (s.kind === 'ready' || s.kind === 'downloading' || s.kind === 'error') {
+        setDismissed(false)
+      }
     })
   }, [])
+
+  const startRestart = (): void => {
+    const open = useWorkspaceStore.getState().open
+    if (open.some(isDirty)) {
+      setConfirmRestart(true)
+      return
+    }
+    void window.api.updater.quitAndInstall()
+  }
 
   if (dismissed) return null
 
@@ -35,15 +49,51 @@ export function UpdateBanner(): React.JSX.Element | null {
 
   if (state.kind === 'ready') {
     return (
+      <>
+        <Shell>
+          <span className="truncate">Update {state.version} ready</span>
+          <button
+            type="button"
+            onClick={startRestart}
+            className="ml-2 flex items-center gap-1 rounded-md bg-white/10 px-2 py-0.5 text-xs font-medium hover:bg-white/15"
+          >
+            <RefreshCw className="size-3" />
+            Restart
+          </button>
+          <button
+            type="button"
+            onClick={() => setDismissed(true)}
+            className="ml-1 rounded-md p-0.5 opacity-60 hover:opacity-100"
+            aria-label="Dismiss"
+          >
+            <X className="size-3" />
+          </button>
+        </Shell>
+        <ConfirmDialog
+          open={confirmRestart}
+          onOpenChange={setConfirmRestart}
+          title="Restart with unsaved files?"
+          description="You have unsaved changes in the editor. Restarting now will discard them."
+          confirmLabel="Restart anyway"
+          destructive
+          onConfirm={() => void window.api.updater.quitAndInstall()}
+        />
+      </>
+    )
+  }
+
+  if (state.kind === 'error') {
+    return (
       <Shell>
-        <span className="truncate">Update {state.version} ready</span>
+        <AlertCircle className="size-3.5 opacity-70" />
+        <span className="truncate">Update check failed</span>
         <button
           type="button"
-          onClick={() => void window.api.updater.quitAndInstall()}
+          onClick={() => void window.api.updater.check()}
           className="ml-2 flex items-center gap-1 rounded-md bg-white/10 px-2 py-0.5 text-xs font-medium hover:bg-white/15"
         >
           <RefreshCw className="size-3" />
-          Restart
+          Try again
         </button>
         <button
           type="button"

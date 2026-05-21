@@ -1,6 +1,7 @@
 import { app, shell, BrowserWindow, ipcMain, nativeImage, screen } from 'electron'
-import { spawn } from 'child_process'
+import { spawn, spawnSync } from 'child_process'
 import { readFileSync, writeFileSync } from 'fs'
+import { userInfo } from 'os'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -75,20 +76,48 @@ async function openTerminal(): Promise<{ ok: boolean; error?: string }> {
         shell: true
       }).unref()
     } else {
+      // `spawnSync('which', ...)` always returns a child; `status === 0` means the
+      // binary is on PATH. The previous check used `.pid !== undefined`, which is
+      // truthy as long as spawn succeeded — it never actually verified install.
       const candidates = ['gnome-terminal', 'konsole', 'xfce4-terminal', 'xterm']
       const term =
         candidates.find((c) => {
-          try {
-            return spawn('which', [c]).pid !== undefined
-          } catch {
-            return false
-          }
+          const r = spawnSync('which', [c], { stdio: 'ignore' })
+          return r.status === 0
         }) ?? 'xterm'
       spawn(term, [], { cwd, detached: true, stdio: 'ignore' }).unref()
     }
     return { ok: true }
   } catch (error) {
     return { ok: false, error: (error as Error).message }
+  }
+}
+
+function osUserName(): string {
+  try {
+    const info = userInfo()
+    if (info.username) {
+      // Title-case the OS login name as a friendly default.
+      const u = info.username
+      return u.charAt(0).toUpperCase() + u.slice(1)
+    }
+  } catch {
+    /* ignore */
+  }
+  return ''
+}
+
+function gitBranch(): string | null {
+  try {
+    const r = spawnSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+      cwd: projectCwd(),
+      encoding: 'utf8'
+    })
+    if (r.status !== 0) return null
+    const out = (r.stdout || '').trim()
+    return out && out !== 'HEAD' ? out : null
+  } catch {
+    return null
   }
 }
 
@@ -109,7 +138,14 @@ function createWindow(): void {
     center: saved.x === undefined,
     show: false,
     autoHideMenuBar: true,
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    // macOS: hiddenInset keeps the traffic lights; Win/Linux: hide the native
+    // title bar entirely and use Electron's overlay buttons so we don't render
+    // two chrome strips.
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
+    titleBarOverlay:
+      process.platform !== 'darwin'
+        ? { color: '#000000', symbolColor: '#cfcfcf', height: 40 }
+        : undefined,
     trafficLightPosition: process.platform === 'darwin' ? { x: 14, y: 14 } : undefined,
     backgroundColor: '#000000',
     ...(process.platform === 'linux' ? { icon } : {}),
@@ -197,6 +233,8 @@ app.whenReady().then(() => {
   ipcMain.handle('open-terminal', () => openTerminal())
   ipcMain.handle('reveal-in-folder', () => revealInFolder())
   ipcMain.handle('project-cwd', () => projectCwd())
+  ipcMain.handle('os-username', () => osUserName())
+  ipcMain.handle('git-branch', () => gitBranch())
   registerChatIpc()
   registerFsIpc(projectCwd)
   registerTerminalIpc(projectCwd)

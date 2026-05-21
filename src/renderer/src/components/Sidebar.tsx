@@ -16,12 +16,14 @@ import { cn } from '@renderer/lib/utils'
 import type { Chat } from '@renderer/lib/chat'
 import { UNGROUPED, groupChatsByProject } from '@renderer/lib/projects'
 import { useChatStore } from '@renderer/stores/chatStore'
+import { useSettings } from '@renderer/lib/settings'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger
 } from './ui/dropdown-menu'
+import { ConfirmDialog } from './ConfirmDialog'
 import logoWhite from '../assets/logo-white.svg'
 import { ChromeButton } from './Toolbar'
 
@@ -67,8 +69,18 @@ export function Sidebar({
   const projectGroups = useMemo(() => allGroups.filter((g) => g.cwd !== UNGROUPED), [allGroups])
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<Chat | null>(null)
+  const [osName, setOsName] = useState<string>('')
   const renameChat = useChatStore((s) => s.renameChat)
   const deleteChat = useChatStore((s) => s.deleteChat)
+  const { settings } = useSettings()
+
+  useEffect(() => {
+    void window.api.osUserName().then(setOsName)
+  }, [])
+
+  const accountName = settings.userName.trim() || osName || 'Researcher'
+  const avatarChar = accountName.charAt(0).toUpperCase() || 'Q'
 
   const toggle = (key: string): void => setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }))
 
@@ -85,7 +97,7 @@ export function Sidebar({
         setEditingId(null)
       }}
       onCancelRename={() => setEditingId(null)}
-      onDelete={() => deleteChat(c.id)}
+      onDelete={() => setPendingDelete(c)}
     />
   )
 
@@ -101,6 +113,8 @@ export function Sidebar({
       />
       <aside
         aria-hidden={!open}
+        // `inert` keeps Tab focus from landing in invisible UI when the sidebar is closed.
+        {...(!open ? { inert: '' as unknown as boolean } : {})}
         className={cn(
           'absolute top-0 left-0 z-40 flex h-full w-72 flex-col bg-card transition-transform duration-200 ease-out',
           open ? 'translate-x-0' : '-translate-x-full'
@@ -181,14 +195,32 @@ export function Sidebar({
 
         <div className="flex shrink-0 items-center gap-3 px-3 py-3">
           <div className="inline-flex size-9 items-center justify-center rounded-full bg-white text-sm font-medium text-black">
-            C
+            {avatarChar}
           </div>
           <div className="flex min-w-0 flex-1 flex-col leading-tight">
-            <span className="truncate text-sm">akacolf</span>
-            <span className="text-xs text-muted-foreground">Free plan</span>
+            <span className="truncate text-sm">{accountName}</span>
+            <span className="text-xs text-muted-foreground">Research preview</span>
           </div>
         </div>
       </aside>
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(o) => {
+          if (!o) setPendingDelete(null)
+        }}
+        title="Delete chat?"
+        description={
+          pendingDelete
+            ? `“${pendingDelete.title || 'New chat'}” will be removed. This can’t be undone.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        destructive
+        onConfirm={() => {
+          if (pendingDelete) deleteChat(pendingDelete.id)
+          setPendingDelete(null)
+        }}
+      />
     </>
   )
 }

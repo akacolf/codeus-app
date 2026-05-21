@@ -140,6 +140,8 @@ const api = {
   openTerminal: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('open-terminal'),
   revealInFolder: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('reveal-in-folder'),
   projectCwd: (): Promise<string> => ipcRenderer.invoke('project-cwd'),
+  osUserName: (): Promise<string> => ipcRenderer.invoke('os-username'),
+  gitBranch: (): Promise<string | null> => ipcRenderer.invoke('git-branch'),
   onChromeState,
   chat: { start: startChat },
   fs: fsBridge,

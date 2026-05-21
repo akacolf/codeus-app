@@ -24,10 +24,20 @@ interface ChatStore {
   deleteChat: (id: string) => void
 
   sendMessage: (text: string, settings: ChatSettingsSnapshot) => void
-  stopStreaming: () => void
+  editUserMessage: (
+    chatId: string,
+    messageId: string,
+    text: string,
+    settings: ChatSettingsSnapshot
+  ) => void
+  regenerate: (chatId: string, assistantMessageId: string, settings: ChatSettingsSnapshot) => void
+  retryAfterError: (chatId: string, settings: ChatSettingsSnapshot) => void
+  stopStreaming: (chatId?: string) => void
 }
 
-const cancelHandles = new Map<string, () => void>()
+// One cancel handle per chat — concurrent streams in the same chat are not allowed;
+// a new send cancels the previous in-flight stream for that chat.
+const cancelByChatId = new Map<string, () => void>()
 
 export const useChatStore = create<ChatStore>()(
   subscribeWithSelector((set, get) => ({
@@ -81,11 +91,7 @@ export const useChatStore = create<ChatStore>()(
     },
 
     deleteChat: (id) => {
-      const cancel = cancelHandles.get(id)
-      if (cancel) {
-        cancel()
-        cancelHandles.delete(id)
-      }
+      cancelChatStream(id)
       set((s) => {
         const chats = s.chats.filter((c) => c.id !== id)
         const history = s.history.filter((v) => !(v.type === 'chat' && v.chatId === id))
@@ -115,11 +121,19 @@ export const useChatStore = create<ChatStore>()(
 
       if (view.type === 'chat') {
         chatId = view.chatId
+        // If the current chat is mid-stream, cancel it before starting a new turn.
+        cancelChatStream(chatId)
         const existing = chats.find((c) => c.id === chatId)
-        nextHistory = [...(existing?.messages ?? []), userMsg]
+        // Drop any in-progress assistant placeholder from the cancelled stream.
+        const prior = (existing?.messages ?? []).filter(
+          (m) => m.id !== existing?.streamingMessageId
+        )
+        nextHistory = [...prior, userMsg]
         set({
           chats: chats.map((c) =>
-            c.id === chatId ? { ...c, messages: nextHistory, error: undefined } : c
+            c.id === chatId
+              ? { ...c, messages: nextHistory, error: undefined, streamingMessageId: undefined }
+              : c
           )
         })
       } else {
@@ -143,11 +157,79 @@ export const useChatStore = create<ChatStore>()(
       startAssistantStream(chatId, nextHistory, settings)
     },
 
-    stopStreaming: () => {
-      cancelHandles.forEach((cancel) => cancel())
+    editUserMessage: (chatId, messageId, text, settings) => {
+      const trimmed = text.trim()
+      if (!trimmed) return
+      cancelChatStream(chatId)
+      const { chats } = get()
+      const chat = chats.find((c) => c.id === chatId)
+      if (!chat) return
+      const idx = chat.messages.findIndex((m) => m.id === messageId)
+      if (idx < 0 || chat.messages[idx].role !== 'user') return
+
+      const truncated: Message[] = [
+        ...chat.messages.slice(0, idx),
+        { ...chat.messages[idx], text: trimmed }
+      ]
+      set({
+        chats: chats.map((c) =>
+          c.id === chatId
+            ? { ...c, messages: truncated, error: undefined, streamingMessageId: undefined }
+            : c
+        )
+      })
+      startAssistantStream(chatId, truncated, settings)
+    },
+
+    regenerate: (chatId, assistantMessageId, settings) => {
+      cancelChatStream(chatId)
+      const { chats } = get()
+      const chat = chats.find((c) => c.id === chatId)
+      if (!chat) return
+      const idx = chat.messages.findIndex((m) => m.id === assistantMessageId)
+      if (idx < 0 || chat.messages[idx].role !== 'assistant') return
+      const truncated = chat.messages.slice(0, idx)
+      set({
+        chats: chats.map((c) =>
+          c.id === chatId
+            ? { ...c, messages: truncated, error: undefined, streamingMessageId: undefined }
+            : c
+        )
+      })
+      startAssistantStream(chatId, truncated, settings)
+    },
+
+    retryAfterError: (chatId, settings) => {
+      cancelChatStream(chatId)
+      const { chats } = get()
+      const chat = chats.find((c) => c.id === chatId)
+      if (!chat || !chat.error) return
+      set({
+        chats: chats.map((c) => (c.id === chatId ? { ...c, error: undefined } : c))
+      })
+      startAssistantStream(chatId, chat.messages, settings)
+    },
+
+    stopStreaming: (chatId) => {
+      if (chatId) {
+        cancelChatStream(chatId)
+        return
+      }
+      // Fallback: cancel current view's chat only — never all chats.
+      const { history, index } = get()
+      const view = history[index]
+      if (view.type === 'chat') cancelChatStream(view.chatId)
     }
   }))
 )
+
+function cancelChatStream(chatId: string): void {
+  const cancel = cancelByChatId.get(chatId)
+  if (cancel) {
+    cancel()
+    cancelByChatId.delete(chatId)
+  }
+}
 
 function startAssistantStream(
   chatId: string,
@@ -189,13 +271,16 @@ function startAssistantStream(
   }
 
   const finish = (errorMessage?: string): void => {
-    cancelHandles.delete(requestId)
+    // Only clear the handle if it's still pointing at this stream — a follow-up
+    // send might have already installed a new one.
+    if (cancelByChatId.get(chatId) === cancel) cancelByChatId.delete(chatId)
     useChatStore.setState((s) => ({
       chats: s.chats.map((c) => {
         if (c.id !== chatId) return c
         const next: Chat = { ...c, streamingMessageId: undefined }
         if (errorMessage) {
-          next.error = errorMessage
+          // Don't surface user-initiated cancellations as errors.
+          if (errorMessage !== 'cancelled') next.error = errorMessage
           next.messages = c.messages.filter((m) => !(m.id === assistantId && m.text.length === 0))
         }
         return next
@@ -215,10 +300,32 @@ function startAssistantStream(
       onError: (m) => finish(m)
     }
   )
-  cancelHandles.set(requestId, cancel)
+  cancelByChatId.set(chatId, cancel)
 }
 
+// Persist chat list to localStorage, debounced — assistant deltas can land 30+ times
+// per second during streaming, so writing on every change is wasteful.
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+let lastChats: Chat[] | null = null
 useChatStore.subscribe(
   (s) => s.chats,
-  (chats) => saveChats(chats)
+  (chats) => {
+    lastChats = chats
+    if (saveTimer) return
+    saveTimer = setTimeout(() => {
+      saveTimer = null
+      if (lastChats) saveChats(lastChats)
+    }, 400)
+  }
 )
+
+// Flush on unload so the latest state survives.
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    if (saveTimer) {
+      clearTimeout(saveTimer)
+      saveTimer = null
+    }
+    if (lastChats) saveChats(lastChats)
+  })
+}

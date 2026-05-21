@@ -17,31 +17,48 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@renderer/components/ui/dropdown-menu'
+import { useSettings } from '@renderer/lib/settings'
 import { Composer } from './Composer'
 
-const SUGGESTIONS: Array<{ icon: React.ComponentType<{ className?: string }>; label: string }> = [
+interface Suggestion {
+  icon: React.ComponentType<{ className?: string }>
+  label: string
+  // If set, clicking the suggestion runs this side effect instead of filling
+  // the composer draft.
+  action?: 'open-connect-tool'
+}
+
+const SUGGESTIONS: Suggestion[] = [
   { icon: MessageCircle, label: 'Tour the repo and surface what to ship first' },
   { icon: MessageCircle, label: 'Draft today’s standup from yesterday’s commits' },
   { icon: GitBranch, label: 'Review my recent commits for risks and follow-ups' },
-  { icon: LayoutGrid, label: 'Connect a tool — Linear, GitHub, Vercel' }
+  {
+    icon: LayoutGrid,
+    label: 'Connect a tool — Linear, GitHub, Vercel',
+    action: 'open-connect-tool'
+  }
 ]
 
 const GREETING_COUNT = 3
 
-function renderGreeting(idx: number): React.ReactNode {
+function renderGreeting(idx: number, name: string): React.ReactNode {
   if (idx === 1) return 'Build something great.'
   if (idx === 2) return 'Atoms have structurally built the larger whole.'
+  if (!name) return 'What are we building?'
   return (
     <>
-      What are we building, <span className="text-muted-foreground">Colf</span>?
+      What are we building, <span className="text-muted-foreground">{name}</span>?
     </>
   )
 }
 
 interface HomeProps {
+  draft: string
+  onDraftChange: (value: string) => void
   onSubmit: (text: string) => void
   onOpenTerminal?: () => void
   onReveal?: () => void
+  onOpenConnectTool?: () => void
 }
 
 function basename(path: string): string {
@@ -54,25 +71,46 @@ function tildeify(path: string): string {
   return path.replace(/^\/Users\/[^/]+/, '~').replace(/^\/home\/[^/]+/, '~')
 }
 
-export function Home({ onSubmit, onOpenTerminal, onReveal }: HomeProps): React.JSX.Element {
+export function Home({
+  draft,
+  onDraftChange,
+  onSubmit,
+  onOpenTerminal,
+  onReveal,
+  onOpenConnectTool
+}: HomeProps): React.JSX.Element {
   const [greetingIdx] = useState(() => Math.floor(Math.random() * GREETING_COUNT))
   const [projectPath, setProjectPath] = useState<string | null>(null)
+  const [branch, setBranch] = useState<string | null>(null)
+  const [osName, setOsName] = useState<string>('')
+  const { settings } = useSettings()
 
   useEffect(() => {
     void window.api.projectCwd().then(setProjectPath)
+    void window.api.gitBranch().then(setBranch)
+    void window.api.osUserName().then(setOsName)
   }, [])
 
   const projectName = projectPath ? basename(projectPath) : '…'
   const projectDisplay = projectPath ? tildeify(projectPath) : ''
+  const greetingName = settings.userName.trim() || osName
+
+  const handleSuggestion = (s: Suggestion): void => {
+    if (s.action === 'open-connect-tool') {
+      onOpenConnectTool?.()
+      return
+    }
+    onDraftChange(s.label)
+  }
 
   return (
     <div className="flex h-full w-full items-center justify-center px-6">
       <div className="flex w-full max-w-2xl flex-col items-center">
         <h1 className="mb-10 text-center text-3xl font-normal tracking-tight">
-          {renderGreeting(greetingIdx)}
+          {renderGreeting(greetingIdx, greetingName)}
         </h1>
 
-        <Composer onSubmit={onSubmit} />
+        <Composer draft={draft} onDraftChange={onDraftChange} onSubmit={onSubmit} autoFocus />
 
         <div className="mt-3 flex w-full items-center gap-1 px-2 text-xs text-muted-foreground">
           <DropdownMenu>
@@ -101,53 +139,48 @@ export function Home({ onSubmit, onOpenTerminal, onReveal }: HomeProps): React.J
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <ChipButton>
-                <Laptop className="size-3.5" />
-                Work locally
-                <ChevronDown className="size-3 opacity-60" />
-              </ChipButton>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-56">
-              <DropdownMenuLabel className="text-muted-foreground">
-                Execution context
-              </DropdownMenuLabel>
-              <DropdownMenuItem disabled>
-                <Laptop />
-                <span>Work locally</span>
-                <span className="ml-auto text-[10px] text-muted-foreground">current</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem disabled>
-                <Cloud />
-                <span>Cloud sandbox</span>
-                <span className="ml-auto text-[10px] text-muted-foreground">soon</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-1.5">
-            <GitBranch className="size-3.5" />
-            main
+          <span
+            title="Cloud sandbox is on the roadmap"
+            className="inline-flex items-center gap-1.5 rounded-full px-2 py-1.5"
+          >
+            <Laptop className="size-3.5" />
+            Work locally
+            <span className="ml-1 rounded-full bg-white/8 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+              <Cloud className="mr-1 inline size-2.5" />
+              cloud soon
+            </span>
           </span>
+
+          {branch && (
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full px-2 py-1.5"
+              title={`Current git branch: ${branch}`}
+            >
+              <GitBranch className="size-3.5" />
+              {branch}
+            </span>
+          )}
         </div>
 
         <ul className="mt-8 flex w-full flex-col">
-          {SUGGESTIONS.map(({ icon: Icon, label }, i) => (
-            <Fragment key={label}>
-              {i > 0 && <li role="presentation" className="h-px bg-white/8" />}
-              <li>
-                <button
-                  type="button"
-                  onClick={() => onSubmit(label)}
-                  className="flex w-full items-center gap-3 py-3.5 text-left text-sm text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  <Icon className="size-4 shrink-0 opacity-70" />
-                  <span>{label}</span>
-                </button>
-              </li>
-            </Fragment>
-          ))}
+          {SUGGESTIONS.map((s, i) => {
+            const Icon = s.icon
+            return (
+              <Fragment key={s.label}>
+                {i > 0 && <li role="presentation" className="h-px bg-white/8" />}
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => handleSuggestion(s)}
+                    className="flex w-full items-center gap-3 py-3.5 text-left text-sm text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    <Icon className="size-4 shrink-0 opacity-70" />
+                    <span>{s.label}</span>
+                  </button>
+                </li>
+              </Fragment>
+            )
+          })}
         </ul>
       </div>
     </div>

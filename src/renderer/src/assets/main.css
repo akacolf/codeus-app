@@ -89,3 +89,14 @@ input {
     border-color: transparent;
   }
 }
+
+/* shiki injects <pre class="shiki"> with an inline background; we suppress it
+   so the surrounding code block frame controls the look. */
+.shiki-host pre.shiki {
+  background-color: transparent !important;
+  margin: 0;
+  padding: 0;
+}
+.shiki-host code {
+  background: transparent;
+}

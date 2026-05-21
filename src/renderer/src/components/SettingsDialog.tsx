@@ -5,6 +5,7 @@ import {
   DialogHeader,
   DialogTitle
 } from '@renderer/components/ui/dialog'
+import { Input } from '@renderer/components/ui/input'
 import { MODELS, PERMISSIONS, useSettings } from '@renderer/lib/settings'
 import { cn } from '@renderer/lib/utils'
 
@@ -27,6 +28,15 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
         </DialogHeader>
 
         <div className="flex flex-col gap-6">
+          <Section title="Your name" hint="Used in the home greeting. Defaults to your OS user.">
+            <Input
+              value={settings.userName}
+              placeholder="Display name"
+              onChange={(e) => set('userName', e.target.value)}
+              maxLength={40}
+            />
+          </Section>
+
           <Section title="Default model">
             <ChipRow
               items={MODELS.map((m) => ({ id: m.id, label: m.label }))}
@@ -41,6 +51,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
               selectedId={settings.permission}
               onSelect={(id) => set('permission', id as typeof settings.permission)}
             />
+          </Section>
+
+          <Section title="Usage & billing">
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Model calls are routed through Quantum Club’s proxy to Vercel AI Gateway. During the
+              research preview, usage is on us — there is no user-facing billing and no API key to
+              configure.
+            </p>
           </Section>
         </div>
       </DialogContent>
