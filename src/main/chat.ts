@@ -29,7 +29,7 @@ type StartParams = z.infer<typeof StartParamsSchema>
 const MODEL_MAP: Record<string, string> = {
   'sonnet-4.6': 'anthropic/claude-sonnet-4.6',
   'haiku-4.5': 'anthropic/claude-haiku-4.5',
-  'gemini-2.5-flash': 'google/gemini-2.5-flash',
+  'gemini-3-flash': 'google/gemini-3-flash',
   'gpt-5-mini': 'openai/gpt-5-mini'
 }
 

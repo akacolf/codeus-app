@@ -14,7 +14,7 @@ export type PermissionId = (typeof PERMISSIONS)[number]['id']
 export const MODELS = [
   { id: 'sonnet-4.6', label: 'Sonnet 4.6', hint: 'Balanced default' },
   { id: 'haiku-4.5', label: 'Haiku 4.5', hint: 'Fastest, cheapest Claude' },
-  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', hint: 'Very cheap, very fast' },
+  { id: 'gemini-3-flash', label: 'Gemini 3 Flash', hint: 'Very cheap, very fast' },
   { id: 'gpt-5-mini', label: 'GPT-5 mini', hint: 'OpenAI cheap tier' }
 ] as const
 
