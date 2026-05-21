@@ -23,6 +23,12 @@ import {
   type ModelId,
   type PermissionId
 } from '@renderer/lib/settings'
+import { getUsage, subscribeUsage, type UsageSnapshot } from '@renderer/lib/usage'
+
+// Soft daily cap used to draw the ring. Research-preview accounts share a
+// pool, so this is a guidance bar, not a hard quota — when the proxy starts
+// returning real remaining-credit headers, swap this for the live number.
+const DAILY_REQUEST_CAP = 100
 
 // Per-attachment cap. Larger files are clipped on injection so a single drop
 // can't blow the request body.
@@ -291,6 +297,7 @@ export function Composer({
             <PopoverTrigger asChild>
               <PillButton onClick={(e) => e.stopPropagation()}>
                 <span className="truncate">{model.label}</span>
+                <UsageRing />
                 <ChevronDown className="size-3.5 opacity-70" />
               </PillButton>
             </PopoverTrigger>
@@ -307,6 +314,9 @@ export function Composer({
                   setModelOpen(false)
                 }}
               />
+              <div className="mt-2 border-t border-white/8 pt-2 text-[11px] text-muted-foreground">
+                <UsageReadout />
+              </div>
             </PopoverContent>
           </Popover>
 
@@ -403,6 +413,65 @@ function OptionList({
         )
       })}
     </ul>
+  )
+}
+
+function useUsage(): UsageSnapshot {
+  const [snap, setSnap] = useState<UsageSnapshot>(() => getUsage())
+  useEffect(() => subscribeUsage(setSnap), [])
+  return snap
+}
+
+function UsageRing(): React.JSX.Element {
+  const usage = useUsage()
+  const used = Math.min(usage.requests, DAILY_REQUEST_CAP)
+  const ratio = used / DAILY_REQUEST_CAP
+  const remaining = Math.max(0, DAILY_REQUEST_CAP - usage.requests)
+  const r = 5
+  const c = 2 * Math.PI * r
+  // Trim a hair so the stroke joins are clean at 0% / 100%.
+  const dash = Math.max(0, Math.min(c - 0.01, c * ratio))
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      className="size-3.5 shrink-0"
+      role="img"
+      aria-label={`${remaining} of ${DAILY_REQUEST_CAP} requests remaining today`}
+    >
+      <circle
+        cx="7"
+        cy="7"
+        r={r}
+        fill="none"
+        stroke="currentColor"
+        strokeOpacity="0.25"
+        strokeWidth="1.5"
+      />
+      <circle
+        cx="7"
+        cy="7"
+        r={r}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeDasharray={`${dash} ${c}`}
+        transform="rotate(-90 7 7)"
+      />
+    </svg>
+  )
+}
+
+function UsageReadout(): React.JSX.Element {
+  const usage = useUsage()
+  const remaining = Math.max(0, DAILY_REQUEST_CAP - usage.requests)
+  return (
+    <div className="flex items-center justify-between gap-2 px-1">
+      <span>Usage today</span>
+      <span className="text-foreground/85">
+        {remaining}/{DAILY_REQUEST_CAP} left
+      </span>
+    </div>
   )
 }
 

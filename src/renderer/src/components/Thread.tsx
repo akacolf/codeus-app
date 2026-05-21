@@ -98,9 +98,11 @@ export function Thread({
   const handleRetry = (): void => retryAfterError(chat.id, settings)
 
   return (
-    <div className="flex h-full w-full flex-col">
+    <div className="relative flex h-full w-full flex-col">
       <div ref={scrollerRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto px-6">
-        <div ref={contentRef} className="mx-auto flex w-full max-w-2xl flex-col gap-5 py-8">
+        {/* Extra bottom padding lets the last message scroll above the floating
+            composer so the conversation isn't clipped at the bottom edge. */}
+        <div ref={contentRef} className="mx-auto flex w-full max-w-2xl flex-col gap-5 pt-8 pb-44">
           {chat.messages.map((m) => (
             <MessageBubble
               key={m.id}
@@ -127,8 +129,14 @@ export function Thread({
           <div ref={endRef} />
         </div>
       </div>
-      <div className="w-full shrink-0 px-6 pb-6">
-        <div className="mx-auto flex w-full max-w-2xl flex-col gap-2">
+      {/* Gradient mask: scrolled content fades into the background before
+          reaching the composer, so the chat appears to flow behind it. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-44 bg-gradient-to-t from-background via-background/95 to-transparent"
+      />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-6 pb-6">
+        <div className="pointer-events-auto mx-auto flex w-full max-w-2xl flex-col gap-2">
           <Composer
             draft={draft}
             onDraftChange={onDraftChange}

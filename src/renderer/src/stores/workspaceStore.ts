@@ -20,6 +20,9 @@ interface WorkspaceStore {
   open: OpenFile[]
   activePath: string | null
   expandedDirs: Set<string> // posix-relative dir paths the file tree has expanded
+  // Latest "scroll/cursor here" request from a citation link. Bumps `seq` on
+  // every call so EditorPane re-fires the reveal even when path+line repeat.
+  pendingReveal: { path: string; line: number; seq: number } | null
 
   openFile: (path: string) => Promise<void>
   closeFile: (path: string) => void
@@ -27,6 +30,8 @@ interface WorkspaceStore {
   setBuffer: (path: string, value: string) => void
   saveActive: () => Promise<void>
   toggleDir: (path: string) => void
+  revealInEditor: (path: string, line: number) => Promise<void>
+  clearPendingReveal: (path: string, seq: number) => void
 }
 
 function isDirty(f: OpenFile): boolean {
@@ -38,6 +43,7 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
     open: [],
     activePath: null,
     expandedDirs: new Set<string>(['']),
+    pendingReveal: null,
 
     openFile: async (path) => {
       // Already open — just focus it.
@@ -108,7 +114,22 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
         if (next.has(path)) next.delete(path)
         else next.add(path)
         return { expandedDirs: next }
+      }),
+
+    revealInEditor: async (path, line) => {
+      await get().openFile(path)
+      set((s) => ({
+        pendingReveal: { path, line, seq: (s.pendingReveal?.seq ?? 0) + 1 }
+      }))
+    },
+
+    clearPendingReveal: (path, seq) => {
+      set((s) => {
+        if (!s.pendingReveal) return s
+        if (s.pendingReveal.path !== path || s.pendingReveal.seq !== seq) return s
+        return { pendingReveal: null }
       })
+    }
   }))
 )
 

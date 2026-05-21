@@ -1,9 +1,21 @@
-import { memo, useEffect, useRef, useState } from 'react'
+import { Children, memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Check, Copy } from 'lucide-react'
 import { codeToHtml, type BundledLanguage } from 'shiki'
 import { cn } from '@renderer/lib/utils'
+import { useChatStore } from '@renderer/stores/chatStore'
+import { useWorkspaceStore } from '@renderer/stores/workspaceStore'
+
+// Source-file extensions we'll linkify in `path.ext:line` / `path.ext (line N)`
+// citations. Restricted to code-shaped extensions so `node.js` or `v1.2` in
+// prose don't get accidentally turned into broken links.
+const CITATION_EXTS =
+  'ts|tsx|js|jsx|mjs|cjs|json|md|mdx|css|scss|html|yml|yaml|toml|py|go|rs|sh|bash|zsh|sql|c|h|cpp|hpp|java|kt|swift|rb|php|vue|svelte'
+const CITATION_RE = new RegExp(
+  `(\\b[\\w./@\\-+]+?\\.(?:${CITATION_EXTS}))(?::(\\d+)|\\s*\\(\\s*line\\s+(\\d+)\\s*\\))`,
+  'gi'
+)
 
 // Conservative allow-list: shiki ships small per-language grammars. Anything
 // outside this set falls through to a plain mono block.
@@ -56,22 +68,28 @@ export const Markdown = memo(function Markdown({ text }: { text: string }): Reac
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          p: ({ children }) => <p className="mt-3 first:mt-0 whitespace-pre-wrap">{children}</p>,
+          p: ({ children }) => (
+            <p className="mt-3 first:mt-0 whitespace-pre-wrap">{linkifyCitations(children)}</p>
+          ),
           ul: ({ children }) => (
             <ul className="mt-3 list-disc space-y-1 pl-5 first:mt-0">{children}</ul>
           ),
           ol: ({ children }) => (
             <ol className="mt-3 list-decimal space-y-1 pl-5 first:mt-0">{children}</ol>
           ),
-          li: ({ children }) => <li>{children}</li>,
+          li: ({ children }) => <li>{linkifyCitations(children)}</li>,
           h1: ({ children }) => (
-            <h1 className="mt-4 text-base font-semibold first:mt-0">{children}</h1>
+            <h1 className="mt-4 text-base font-semibold first:mt-0">
+              {linkifyCitations(children)}
+            </h1>
           ),
           h2: ({ children }) => (
-            <h2 className="mt-4 text-base font-semibold first:mt-0">{children}</h2>
+            <h2 className="mt-4 text-base font-semibold first:mt-0">
+              {linkifyCitations(children)}
+            </h2>
           ),
           h3: ({ children }) => (
-            <h3 className="mt-4 text-sm font-semibold first:mt-0">{children}</h3>
+            <h3 className="mt-4 text-sm font-semibold first:mt-0">{linkifyCitations(children)}</h3>
           ),
           strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
           em: ({ children }) => <em className="italic">{children}</em>,
@@ -96,8 +114,10 @@ export const Markdown = memo(function Markdown({ text }: { text: string }): Reac
               <table className="text-xs">{children}</table>
             </div>
           ),
-          th: ({ children }) => <th className="px-2 py-1 text-left font-semibold">{children}</th>,
-          td: ({ children }) => <td className="px-2 py-1">{children}</td>,
+          th: ({ children }) => (
+            <th className="px-2 py-1 text-left font-semibold">{linkifyCitations(children)}</th>
+          ),
+          td: ({ children }) => <td className="px-2 py-1">{linkifyCitations(children)}</td>,
           code: ({ className, children, ...rest }) => {
             const match = /language-(\w+)/.exec(className ?? '')
             // react-markdown distinguishes block vs inline via the absence/presence
@@ -121,6 +141,62 @@ export const Markdown = memo(function Markdown({ text }: { text: string }): Reac
     </div>
   )
 })
+
+// Walk react-markdown children and turn citation strings into clickable spans.
+// We only split string nodes; element nodes (e.g., `<code>`, `<strong>`) pass
+// through untouched so inline formatting around a citation still renders.
+function linkifyCitations(children: ReactNode): ReactNode {
+  return Children.map(children, (child) => {
+    if (typeof child !== 'string') return child
+    return tokenizeCitations(child)
+  })
+}
+
+function tokenizeCitations(text: string): ReactNode {
+  if (!CITATION_RE.test(text)) return text
+  CITATION_RE.lastIndex = 0
+  const out: ReactNode[] = []
+  let last = 0
+  let m: RegExpExecArray | null
+  while ((m = CITATION_RE.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index))
+    const path = m[1]
+    const line = parseInt(m[2] ?? m[3] ?? '1', 10)
+    out.push(
+      <Citation key={`${m.index}-${path}-${line}`} path={path} line={line}>
+        {m[0]}
+      </Citation>
+    )
+    last = m.index + m[0].length
+  }
+  if (last < text.length) out.push(text.slice(last))
+  return out
+}
+
+function Citation({
+  path,
+  line,
+  children
+}: {
+  path: string
+  line: number
+  children: ReactNode
+}): React.JSX.Element {
+  const openEditor = useChatStore((s) => s.openEditor)
+  const revealInEditor = useWorkspaceStore((s) => s.revealInEditor)
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        openEditor()
+        void revealInEditor(path, line)
+      }}
+      className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[0.92em] text-foreground/95 transition-colors hover:bg-white/16"
+    >
+      {children}
+    </button>
+  )
+}
 
 function CodeBlock({ code, lang }: { code: string; lang: string }): React.JSX.Element {
   const [copied, setCopied] = useState(false)

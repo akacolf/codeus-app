@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type * as MonacoNS from 'monaco-editor'
 import { isDirty, useWorkspaceStore, type OpenFile } from '@renderer/stores/workspaceStore'
@@ -55,10 +55,28 @@ interface EditorPaneProps {
 export function EditorPane({ file }: EditorPaneProps): React.JSX.Element {
   const setBuffer = useWorkspaceStore((s) => s.setBuffer)
   const saveActive = useWorkspaceStore((s) => s.saveActive)
+  const pendingReveal = useWorkspaceStore((s) => s.pendingReveal)
+  const clearPendingReveal = useWorkspaceStore((s) => s.clearPendingReveal)
   const monacoRef = useRef<typeof MonacoNS | null>(null)
+  const editorRef = useRef<MonacoNS.editor.IStandaloneCodeEditor | null>(null)
   const language = useMemo(() => languageForPath(file.path), [file.path])
 
+  // Handle citation reveals. We re-run when `seq` changes so clicking the same
+  // citation twice still jumps the cursor.
+  useEffect(() => {
+    if (!pendingReveal) return
+    if (pendingReveal.path !== file.path) return
+    const editor = editorRef.current
+    if (!editor) return
+    const line = Math.max(1, pendingReveal.line | 0)
+    editor.revealLineInCenter(line)
+    editor.setPosition({ lineNumber: line, column: 1 })
+    editor.focus()
+    clearPendingReveal(pendingReveal.path, pendingReveal.seq)
+  }, [pendingReveal, file.path, clearPendingReveal])
+
   const handleMount: OnMount = (editor, monaco) => {
+    editorRef.current = editor
     monacoRef.current = monaco
     monaco.editor.defineTheme(QC_THEME, {
       base: 'vs-dark',
