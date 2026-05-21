@@ -254,12 +254,7 @@ function MessageBubble({
             )}
           </div>
         )}
-        {isStreaming && parts.length === 0 && (
-          <span
-            aria-hidden
-            className="inline-block size-2 animate-pulse rounded-full bg-foreground/70"
-          />
-        )}
+        {isStreaming && parts.length === 0 && <ThinkingIndicator />}
       </div>
       {!isStreaming && refs.length > 0 && <FileReferences paths={refs} />}
       {!isStreaming && message.text.length > 0 && (
@@ -754,6 +749,42 @@ function CopyAction({ text }: { text: string }): React.JSX.Element {
     >
       {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
     </ActionButton>
+  )
+}
+
+const THINKING_PHRASES = [
+  'Thinking',
+  'Pondering',
+  'Problem-solving',
+  'Reasoning',
+  'Connecting the dots',
+  'Considering options',
+  'Working it out',
+  'Cross-checking'
+]
+
+// Rotates through soft "still thinking" copy while we wait for the first
+// streamed token. Each phrase holds for ~1.8s; we cycle in order, then loop.
+function ThinkingIndicator(): React.JSX.Element {
+  const [i, setI] = useState(0)
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setI((v) => (v + 1) % THINKING_PHRASES.length)
+    }, 1800)
+    return () => window.clearInterval(id)
+  }, [])
+  return (
+    <span
+      aria-live="polite"
+      className="inline-flex items-center gap-1 text-[13px] text-muted-foreground italic"
+    >
+      <span>{THINKING_PHRASES[i]}</span>
+      <span aria-hidden className="inline-flex">
+        <span className="animate-[pulse_1.4s_ease-in-out_infinite]">.</span>
+        <span className="animate-[pulse_1.4s_ease-in-out_infinite] [animation-delay:0.2s]">.</span>
+        <span className="animate-[pulse_1.4s_ease-in-out_infinite] [animation-delay:0.4s]">.</span>
+      </span>
+    </span>
   )
 }
 
