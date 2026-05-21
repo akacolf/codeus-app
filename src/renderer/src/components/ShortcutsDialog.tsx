@@ -22,7 +22,7 @@ export function ShortcutsDialog({ open, onOpenChange }: ShortcutsDialogProps): R
           <DialogDescription>The keys QC Codeus responds to today.</DialogDescription>
         </DialogHeader>
 
-        <ul className="flex flex-col divide-y divide-white/5">
+        <ul className="flex flex-col divide-y divide-foreground/5">
           {SHORTCUTS.map((s) => (
             <li key={s.id} className="flex items-center justify-between py-2.5">
               <span className="text-sm text-foreground/85">{s.label}</span>

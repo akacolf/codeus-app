@@ -122,7 +122,13 @@ export function Home({
           {renderGreeting(greetingIdx, greetingName)}
         </h1>
 
-        <Composer draft={draft} onDraftChange={onDraftChange} onSubmit={onSubmit} autoFocus />
+        <Composer
+          draft={draft}
+          onDraftChange={onDraftChange}
+          onSubmit={onSubmit}
+          autoFocus
+          mentionPlacement="below"
+        />
 
         <div className="mt-3 flex w-full items-center gap-1 px-2 text-xs text-muted-foreground">
           <DropdownMenu>
@@ -178,12 +184,12 @@ export function Home({
               onClick={() => onOpenGit?.()}
               disabled={!onOpenGit}
               title={`Source control · ${branch}${dirtyCount > 0 ? ` · ${dirtyCount} changed` : ''}`}
-              className="inline-flex items-center gap-1.5 rounded-full px-2 py-1.5 transition-colors hover:bg-white/5 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-full px-2 py-1.5 transition-colors hover:bg-foreground/5 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
             >
               <GitBranch className="size-3.5" />
               <span className="max-w-[10rem] truncate">{branch}</span>
               {dirtyCount > 0 && (
-                <span className="rounded-full bg-white/12 px-1.5 py-0.5 text-[10px] text-foreground">
+                <span className="rounded-full bg-foreground/12 px-1.5 py-0.5 text-[10px] text-foreground">
                   {dirtyCount}
                 </span>
               )}
@@ -204,7 +210,7 @@ export function Home({
             const Icon = s.icon
             return (
               <Fragment key={s.label}>
-                {i > 0 && <li role="presentation" className="h-px bg-white/8" />}
+                {i > 0 && <li role="presentation" className="h-px bg-foreground/8" />}
                 <li>
                   <button
                     type="button"
@@ -249,7 +255,7 @@ function RuntimeModeChip(): React.JSX.Element {
   const isCloud = settings.runtimeMode === 'cloud'
 
   return (
-    <div className="inline-flex items-center rounded-full bg-white/5 p-0.5">
+    <div className="inline-flex items-center rounded-full bg-foreground/5 p-0.5">
       <RuntimeModeOption
         active={!isCloud}
         onClick={() => choose('local')}
@@ -297,8 +303,8 @@ function RuntimeModeOption({
       className={cn(
         'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 transition-colors disabled:opacity-40',
         active
-          ? 'bg-white text-black'
-          : 'text-muted-foreground hover:bg-white/8 hover:text-foreground'
+          ? 'bg-primary text-primary-foreground'
+          : 'text-muted-foreground hover:bg-foreground/8 hover:text-foreground'
       )}
     >
       {icon}
@@ -314,7 +320,7 @@ const ChipButton = forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTML
         ref={ref}
         type="button"
         {...props}
-        className="inline-flex items-center gap-1.5 rounded-full px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground data-[state=open]:bg-white/8 data-[state=open]:text-foreground"
+        className="inline-flex items-center gap-1.5 rounded-full px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground data-[state=open]:bg-foreground/8 data-[state=open]:text-foreground"
       >
         {children}
       </button>

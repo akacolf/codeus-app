@@ -31,7 +31,32 @@
 }
 
 :root {
-  /* Strict black & white. No visible component borders. */
+  /* Strict grayscale palette. Light tokens live on :root so the renderer can
+     opt in by removing the `dark` class on <html>; the `.dark` block below
+     inverts them. CLAUDE.md hard rule: no accent hue, no visible borders. */
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+  --card: #fafafa;
+  --card-foreground: #0a0a0a;
+  --popover: #ffffff;
+  --popover-foreground: #0a0a0a;
+  --primary: #0a0a0a;
+  --primary-foreground: #ffffff;
+  --secondary: #f0f0f0;
+  --secondary-foreground: #0a0a0a;
+  --muted: #f0f0f0;
+  --muted-foreground: #6b6b6b;
+  --accent: #ebebeb;
+  --accent-foreground: #0a0a0a;
+  --destructive: #0a0a0a;
+  --destructive-foreground: #ffffff;
+  --border: transparent;
+  --input: #ebebeb;
+  --ring: transparent;
+  --radius: 1rem;
+}
+
+.dark {
   --background: #000000;
   --foreground: #ffffff;
   --card: #0a0a0a;
@@ -51,7 +76,6 @@
   --border: transparent;
   --input: #1a1a1a;
   --ring: transparent;
-  --radius: 1rem;
 }
 
 html,
@@ -87,6 +111,13 @@ input {
   *::before,
   *::after {
     border-color: transparent;
+  }
+
+  html:not(.dark) {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
   }
 
   /* Suppress the system-accent (orange on macOS) focus ring that browsers

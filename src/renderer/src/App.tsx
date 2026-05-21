@@ -20,6 +20,7 @@ import {
 } from './components/ui/dialog'
 import { useSettings } from './lib/settings'
 import { matchShortcut } from './lib/shortcuts'
+import { useThemeEffect } from './lib/theme'
 import { useChatStore } from './stores/chatStore'
 import { isDirty, useWorkspaceStore } from './stores/workspaceStore'
 
@@ -47,6 +48,7 @@ function App(): React.JSX.Element {
   // Hoisted draft survives Home ↔ Thread transitions.
   const [draft, setDraft] = useState('')
   const { settings } = useSettings()
+  useThemeEffect()
 
   const chats = useChatStore((s) => s.chats)
   const view = useChatStore((s) => s.history[s.index])
@@ -251,13 +253,13 @@ function App(): React.JSX.Element {
             </DialogDescription>
           </DialogHeader>
           <ul className="flex flex-col gap-2 text-sm text-foreground/85">
-            <li className="rounded-lg bg-white/5 px-3 py-2">
+            <li className="rounded-lg bg-foreground/5 px-3 py-2">
               Linear — pull issues, file tickets from a thread
             </li>
-            <li className="rounded-lg bg-white/5 px-3 py-2">
+            <li className="rounded-lg bg-foreground/5 px-3 py-2">
               GitHub — open PRs, comment, run checks
             </li>
-            <li className="rounded-lg bg-white/5 px-3 py-2">
+            <li className="rounded-lg bg-foreground/5 px-3 py-2">
               Vercel — deploy, inspect logs, read env
             </li>
           </ul>

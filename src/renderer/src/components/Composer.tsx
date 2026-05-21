@@ -3,17 +3,15 @@ import {
   ArrowUp,
   Check,
   ChevronDown,
-  Eye,
-  FileCode2,
-  FileJson,
-  FileText,
   Mic,
   Paperclip,
+  PencilLine,
   Plus,
   Shield,
   Square,
   Zap
 } from 'lucide-react'
+import { FileIcon } from './FileIcon'
 import { Button } from '@renderer/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover'
 import { cn } from '@renderer/lib/utils'
@@ -52,12 +50,16 @@ interface ComposerProps {
   autoFocus?: boolean
   // When non-null, replace the send button with a Stop button that fires this.
   streamingStop?: (() => void) | null
+  // Where the @-mention popover renders. Home has empty space below the
+  // textarea, so we drop it under the caret; Thread's composer is pinned to
+  // the bottom of the viewport, so it has to open upward.
+  mentionPlacement?: 'above' | 'below'
 }
 
 const PERMISSION_ICONS: Record<PermissionId, React.ComponentType<{ className?: string }>> = {
   default: Shield,
-  'read-only': Eye,
-  auto: Zap
+  'auto-review': PencilLine,
+  'full-access': Zap
 }
 
 function getSpeechRecognition(): SpeechRecognitionConstructor | null {
@@ -71,7 +73,8 @@ export function Composer({
   onSubmit,
   placeholder,
   autoFocus,
-  streamingStop
+  streamingStop,
+  mentionPlacement = 'above'
 }: ComposerProps): React.JSX.Element {
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [listening, setListening] = useState(false)
@@ -299,6 +302,7 @@ export function Composer({
           activeIndex={mentionIndex}
           onHover={setMentionIndex}
           onSelect={acceptMention}
+          placement={mentionPlacement}
         />
       )}
       <div className="w-full rounded-3xl bg-input" onClick={() => textareaRef.current?.focus()}>
@@ -319,7 +323,7 @@ export function Composer({
                 key={`${a.name}-${i}`}
                 type="button"
                 onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
-                className="inline-flex max-w-[16rem] items-center gap-1.5 truncate rounded-full bg-white/8 px-2.5 py-1 text-xs text-foreground/85 hover:bg-white/12"
+                className="inline-flex max-w-[16rem] items-center gap-1.5 truncate rounded-full bg-foreground/8 px-2.5 py-1 text-xs text-foreground/85 hover:bg-foreground/12"
                 title={a.truncated ? `${a.name} — truncated` : `${a.name} — remove`}
               >
                 <Paperclip className="size-3" />
@@ -376,12 +380,11 @@ export function Composer({
                   <ChevronDown className="size-3.5 opacity-70" />
                 </PillButton>
               </PopoverTrigger>
-              <PopoverContent align="start" className="w-64">
+              <PopoverContent align="start" className="w-48">
                 <OptionList
                   items={PERMISSIONS.map((p) => ({
                     id: p.id,
                     label: p.label,
-                    hint: p.hint,
                     icon: PERMISSION_ICONS[p.id]
                   }))}
                   selectedId={settings.permission}
@@ -401,7 +404,7 @@ export function Composer({
                   type="button"
                   aria-label="Usage remaining today"
                   onClick={(e) => e.stopPropagation()}
-                  className="inline-flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground data-[state=open]:bg-white/8 data-[state=open]:text-foreground"
+                  className="inline-flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground data-[state=open]:bg-foreground/8 data-[state=open]:text-foreground"
                 >
                   <UsageRing />
                 </button>
@@ -511,8 +514,8 @@ function OptionList({
               type="button"
               onClick={() => onSelect(it.id)}
               className={cn(
-                'flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-sm hover:bg-white/8',
-                active && 'bg-white/8'
+                'flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-sm hover:bg-foreground/8',
+                active && 'bg-foreground/8'
               )}
             >
               {Icon && <Icon className="size-[15px] shrink-0 text-muted-foreground" />}
@@ -589,7 +592,7 @@ function UsageReadout(): React.JSX.Element {
           {remaining}/{DAILY_REQUEST_CAP} left
         </span>
       </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-white/8">
+      <div className="h-1.5 overflow-hidden rounded-full bg-foreground/8">
         <div className="h-full bg-foreground/70" style={{ width: `${pct}%` }} />
       </div>
       <p className="text-[11px] leading-relaxed text-muted-foreground">
@@ -628,35 +631,25 @@ function baseName(p: string): string {
   return i >= 0 ? p.slice(i + 1) : p
 }
 
-function extOfPath(p: string): string {
-  const base = baseName(p)
-  const dot = base.lastIndexOf('.')
-  return dot > 0 ? base.slice(dot + 1).toLowerCase() : ''
-}
-
-function FileIcon({ path }: { path: string }): React.JSX.Element {
-  const ext = extOfPath(path)
-  const className = 'size-3.5 shrink-0 text-muted-foreground'
-  if (ext === 'json') return <FileJson className={className} />
-  if (['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'py', 'go', 'rs'].includes(ext))
-    return <FileCode2 className={className} />
-  return <FileText className={className} />
-}
-
 function MentionDropdown({
   results,
   activeIndex,
   onHover,
-  onSelect
+  onSelect,
+  placement
 }: {
   results: string[]
   activeIndex: number
   onHover: (i: number) => void
   onSelect: (path: string) => void
+  placement: 'above' | 'below'
 }): React.JSX.Element {
   return (
     <div
-      className="pointer-events-auto absolute right-0 bottom-full left-0 mb-2 max-h-72 overflow-y-auto rounded-2xl bg-card/95 p-1 shadow-lg backdrop-blur"
+      className={cn(
+        'pointer-events-auto absolute right-0 left-0 z-10 max-h-72 overflow-y-auto rounded-2xl bg-card/95 p-1 shadow-lg backdrop-blur',
+        placement === 'above' ? 'bottom-full mb-2' : 'top-full mt-2'
+      )}
       onMouseDown={(e) => e.preventDefault()} // keep textarea focus on click
     >
       {results.map((p, i) => {
@@ -669,7 +662,9 @@ function MentionDropdown({
             onClick={() => onSelect(p)}
             className={cn(
               'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs transition-colors',
-              active ? 'bg-white/10 text-foreground' : 'text-muted-foreground hover:bg-white/6'
+              active
+                ? 'bg-foreground/10 text-foreground'
+                : 'text-muted-foreground hover:bg-foreground/6'
             )}
           >
             <FileIcon path={p} />
@@ -689,7 +684,7 @@ const PillButton = forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTML
         ref={ref}
         type="button"
         {...props}
-        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground data-[state=open]:bg-white/8 data-[state=open]:text-foreground"
+        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground data-[state=open]:bg-foreground/8 data-[state=open]:text-foreground"
       >
         {children}
       </button>

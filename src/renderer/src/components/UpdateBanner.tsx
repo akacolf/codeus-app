@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AlertCircle, Download, RefreshCw, X } from 'lucide-react'
+import { AlertCircle, Check, Download, RefreshCw, X } from 'lucide-react'
 import { ConfirmDialog } from './ConfirmDialog'
 import { isDirty, useWorkspaceStore } from '@renderer/stores/workspaceStore'
 
@@ -21,11 +21,25 @@ export function UpdateBanner(): React.JSX.Element | null {
     void window.api.updater.getState().then(setState)
     return window.api.updater.onState((s) => {
       setState(s)
-      if (s.kind === 'ready' || s.kind === 'downloading' || s.kind === 'error') {
+      if (
+        s.kind === 'ready' ||
+        s.kind === 'downloading' ||
+        s.kind === 'error' ||
+        s.kind === 'not-available' ||
+        s.kind === 'checking'
+      ) {
         setDismissed(false)
       }
     })
   }, [])
+
+  // Auto-dismiss the "up to date" confirmation so it doesn't linger after a
+  // user-initiated check. Anything actionable (ready, downloading, error) stays.
+  useEffect(() => {
+    if (state.kind !== 'not-available') return
+    const t = window.setTimeout(() => setDismissed(true), 4000)
+    return () => window.clearTimeout(t)
+  }, [state])
 
   const startRestart = (): void => {
     const open = useWorkspaceStore.getState().open
@@ -37,6 +51,32 @@ export function UpdateBanner(): React.JSX.Element | null {
   }
 
   if (dismissed) return null
+
+  if (state.kind === 'checking') {
+    return (
+      <Shell>
+        <RefreshCw className="size-3.5 animate-spin opacity-70" />
+        <span>Checking for updates…</span>
+      </Shell>
+    )
+  }
+
+  if (state.kind === 'not-available') {
+    return (
+      <Shell>
+        <Check className="size-3.5 opacity-70" />
+        <span>You’re up to date</span>
+        <button
+          type="button"
+          onClick={() => setDismissed(true)}
+          className="ml-1 rounded-md p-0.5 opacity-60 hover:opacity-100"
+          aria-label="Dismiss"
+        >
+          <X className="size-3" />
+        </button>
+      </Shell>
+    )
+  }
 
   if (state.kind === 'downloading') {
     return (
@@ -55,7 +95,7 @@ export function UpdateBanner(): React.JSX.Element | null {
           <button
             type="button"
             onClick={startRestart}
-            className="ml-2 flex items-center gap-1 rounded-md bg-white/10 px-2 py-0.5 text-xs font-medium hover:bg-white/15"
+            className="ml-2 flex items-center gap-1 rounded-md bg-foreground/10 px-2 py-0.5 text-xs font-medium hover:bg-foreground/15"
           >
             <RefreshCw className="size-3" />
             Restart
@@ -90,7 +130,7 @@ export function UpdateBanner(): React.JSX.Element | null {
         <button
           type="button"
           onClick={() => void window.api.updater.check()}
-          className="ml-2 flex items-center gap-1 rounded-md bg-white/10 px-2 py-0.5 text-xs font-medium hover:bg-white/15"
+          className="ml-2 flex items-center gap-1 rounded-md bg-foreground/10 px-2 py-0.5 text-xs font-medium hover:bg-foreground/15"
         >
           <RefreshCw className="size-3" />
           Try again
@@ -112,7 +152,7 @@ export function UpdateBanner(): React.JSX.Element | null {
 
 function Shell({ children }: { children: React.ReactNode }): React.JSX.Element {
   return (
-    <div className="pointer-events-auto fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-full bg-black/85 px-3 py-1.5 text-xs text-white/90 shadow-lg backdrop-blur">
+    <div className="pointer-events-auto fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-full bg-card/95 px-3 py-1.5 text-xs text-foreground/90 shadow-lg backdrop-blur">
       {children}
     </div>
   )

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { ChevronRight, File as FileIcon, Folder, FolderOpen } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import { cn } from '@renderer/lib/utils'
 import { useWorkspaceStore, type DirEntry } from '@renderer/stores/workspaceStore'
+import { FileIcon, FolderIcon } from './FileIcon'
 import { Loader } from './Loader'
 
 interface FileTreeProps {
@@ -150,7 +151,7 @@ function EntryRow({
         <button
           type="button"
           onClick={() => onToggle(entry.path)}
-          className="flex w-full items-center gap-1 rounded px-1.5 py-1 text-left text-[13px] text-foreground/85 hover:bg-white/8"
+          className="flex w-full items-center gap-1 rounded px-1.5 py-1 text-left text-[13px] text-foreground/85 hover:bg-foreground/8"
           style={{ paddingLeft: depth * 12 + 6 }}
         >
           <ChevronRight
@@ -159,11 +160,7 @@ function EntryRow({
               expanded && 'rotate-90'
             )}
           />
-          {expanded ? (
-            <FolderOpen className="size-3.5 shrink-0 text-muted-foreground" />
-          ) : (
-            <Folder className="size-3.5 shrink-0 text-muted-foreground" />
-          )}
+          <FolderIcon name={entry.name} expanded={expanded} />
           <span className="truncate">{entry.name}</span>
         </button>
         {expanded && (
@@ -186,12 +183,12 @@ function EntryRow({
         type="button"
         onClick={() => onOpen(entry.path)}
         className={cn(
-          'flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left text-[13px] hover:bg-white/8',
-          isActive ? 'bg-white/8 text-foreground' : 'text-foreground/75'
+          'flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left text-[13px] hover:bg-foreground/8',
+          isActive ? 'bg-foreground/8 text-foreground' : 'text-foreground/75'
         )}
         style={{ paddingLeft: depth * 12 + 22 }}
       >
-        <FileIcon className="size-3.5 shrink-0 text-muted-foreground" />
+        <FileIcon path={entry.name} />
         <span className="truncate">{entry.name}</span>
       </button>
     </li>

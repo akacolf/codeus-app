@@ -177,7 +177,7 @@ export function GitPanel({ open, onOpenChange }: GitPanelProps): React.JSX.Eleme
             </div>
             <p className="text-xs text-muted-foreground">
               Open a different project, or initialize a repo from the terminal (
-              <code className="rounded bg-white/10 px-1 py-0.5">git init</code>) and refresh.
+              <code className="rounded bg-foreground/10 px-1 py-0.5">git init</code>) and refresh.
             </p>
             <div>
               <Button variant="ghost" size="sm" onClick={() => void refresh()} className="gap-1.5">
@@ -197,7 +197,7 @@ export function GitPanel({ open, onOpenChange }: GitPanelProps): React.JSX.Eleme
                   <button
                     type="button"
                     disabled={busy !== null}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-white/8 px-3 py-1.5 text-xs hover:bg-white/12 disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-foreground/8 px-3 py-1.5 text-xs hover:bg-foreground/12 disabled:opacity-50"
                   >
                     <GitBranch className="size-3.5" />
                     <span className="truncate">{status.branch ?? '(detached)'}</span>
@@ -323,7 +323,7 @@ export function GitPanel({ open, onOpenChange }: GitPanelProps): React.JSX.Eleme
                   <span className="text-[10px]">Commit stages everything (add -A)</span>
                 )}
               </div>
-              <div className="max-h-48 overflow-y-auto rounded-lg bg-white/5 px-2 py-1.5">
+              <div className="max-h-48 overflow-y-auto rounded-lg bg-foreground/5 px-2 py-1.5">
                 {dirty.length === 0 ? (
                   <div className="px-1 py-1 text-xs text-muted-foreground">Working tree clean</div>
                 ) : (
@@ -388,13 +388,13 @@ export function GitPanel({ open, onOpenChange }: GitPanelProps): React.JSX.Eleme
             </div>
 
             {error && (
-              <div className="flex items-start gap-2 rounded-lg bg-white/8 px-3 py-2 text-xs text-foreground/90">
+              <div className="flex items-start gap-2 rounded-lg bg-foreground/8 px-3 py-2 text-xs text-foreground/90">
                 <CircleAlert className="mt-0.5 size-3.5 shrink-0 opacity-70" />
                 <pre className="whitespace-pre-wrap font-sans">{error}</pre>
               </div>
             )}
             {toast && (
-              <div className="rounded-lg bg-white/12 px-3 py-2 text-xs text-foreground/90">
+              <div className="rounded-lg bg-foreground/12 px-3 py-2 text-xs text-foreground/90">
                 {toast}
               </div>
             )}

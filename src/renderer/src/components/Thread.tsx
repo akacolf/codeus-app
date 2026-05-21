@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  ArrowDown,
   Check,
   ChevronDown,
   ChevronRight,
   Copy,
-  FileCode2,
-  FileJson,
   FileText,
   Loader2,
   Pencil,
@@ -18,6 +17,7 @@ import {
   ThumbsUp,
   TriangleAlert
 } from 'lucide-react'
+import { FileIcon } from './FileIcon'
 import type { Chat, Message, MessagePart, TextPart, ToolPart } from '@renderer/lib/chat'
 import { cn } from '@renderer/lib/utils'
 import { Button } from '@renderer/components/ui/button'
@@ -53,6 +53,8 @@ export function Thread({
   const contentRef = useRef<HTMLDivElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const atBottomRef = useRef(true)
+  const lastMessageCountRef = useRef(chat.messages.length)
+  const [showJumpBottom, setShowJumpBottom] = useState(false)
   const streaming = chat.streamingMessageId !== undefined
 
   const stopStreaming = useChatStore((s) => s.stopStreaming)
@@ -67,16 +69,45 @@ export function Thread({
     const el = scrollerRef.current
     if (!el) return
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight
-    atBottomRef.current = distance <= AT_BOTTOM_TOLERANCE
+    const atBottom = distance <= AT_BOTTOM_TOLERANCE
+    atBottomRef.current = atBottom
+    setShowJumpBottom(!atBottom)
+  }
+
+  const jumpToBottom = (smooth = true): void => {
+    atBottomRef.current = true
+    setShowJumpBottom(false)
+    endRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'end' })
   }
 
   // Reset to bottom when switching chats.
   useEffect(() => {
     atBottomRef.current = true
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setShowJumpBottom(false)
+    lastMessageCountRef.current = chat.messages.length
     requestAnimationFrame(() => {
       endRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' })
     })
+    // chat.messages.length intentionally not a dep — the next effect handles
+    // length-only changes; we only want the chat-switch reset here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat.id])
+
+  // When a new message is appended (user submit or fresh assistant turn),
+  // force-snap to the bottom. The previous logic relied on `atBottomRef` being
+  // accurate at the moment the new message landed, but if the user had just
+  // scrolled up a touch, their own message would never come into view.
+  useEffect(() => {
+    if (chat.messages.length > lastMessageCountRef.current) {
+      atBottomRef.current = true
+      setShowJumpBottom(false)
+      requestAnimationFrame(() => {
+        endRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' })
+      })
+    }
+    lastMessageCountRef.current = chat.messages.length
+  }, [chat.messages.length])
 
   // Follow streaming content. ResizeObserver fires whenever the inner content
   // grows (token deltas, new tool chips, etc.); message-count change alone isn't
@@ -113,7 +144,7 @@ export function Thread({
             />
           ))}
           {chat.error && (
-            <div className="flex max-w-[80%] flex-col gap-2 self-start rounded-2xl bg-white/8 px-4 py-3 text-sm text-foreground/85">
+            <div className="flex max-w-[80%] flex-col gap-2 self-start rounded-2xl bg-foreground/8 px-4 py-3 text-sm text-foreground/85">
               <div>
                 <span className="text-muted-foreground">Couldn’t reply: </span>
                 {chat.error}
@@ -136,7 +167,17 @@ export function Thread({
         className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-44 bg-gradient-to-t from-background via-background/95 to-transparent"
       />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-6 pb-6">
-        <div className="pointer-events-auto mx-auto flex w-full max-w-2xl flex-col gap-2">
+        <div className="pointer-events-auto mx-auto flex w-full max-w-2xl flex-col items-center gap-2">
+          {showJumpBottom && (
+            <button
+              type="button"
+              onClick={() => jumpToBottom(true)}
+              aria-label="Scroll to latest"
+              className="inline-flex size-9 items-center justify-center rounded-full bg-card/95 text-foreground shadow-lg backdrop-blur transition-colors hover:bg-card"
+            >
+              <ArrowDown className="size-4" />
+            </button>
+          )}
           <Composer
             draft={draft}
             onDraftChange={onDraftChange}
@@ -382,7 +423,7 @@ function WorkRollup({
         onClick={() => setOverride(!open)}
         aria-expanded={open}
         aria-label={open ? 'Hide work chain' : 'Show work chain'}
-        className="group/chip -ml-1 inline-flex w-fit max-w-full items-center gap-2 rounded-md px-1.5 py-0.5 text-[13px] text-muted-foreground transition-colors hover:bg-white/8 hover:text-foreground"
+        className="group/chip -ml-1 inline-flex w-fit max-w-full items-center gap-2 rounded-md px-1.5 py-0.5 text-[13px] text-muted-foreground transition-colors hover:bg-foreground/8 hover:text-foreground"
       >
         <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">
           {isStreaming ? (
@@ -404,7 +445,7 @@ function WorkRollup({
         />
       </button>
       {open && (
-        <div className="ml-5 flex flex-col gap-3 border-l border-white/10 pl-4">
+        <div className="ml-5 flex flex-col gap-3 border-l border-foreground/10 pl-4">
           {chain.map((p, i) =>
             p.kind === 'text' ? (
               <div key={`c-t-${i}`} className="text-[13px] text-foreground/75 italic">
@@ -445,7 +486,7 @@ function ActionChip({ tool }: { tool: ToolPart }): React.JSX.Element {
         aria-label={open ? `Hide ${label} details` : `Show ${label} details`}
         className={cn(
           'group/chip -ml-1 inline-flex w-fit max-w-full items-center gap-2 rounded-md px-1.5 py-0.5 text-[13px] text-muted-foreground transition-colors',
-          hasDetails && 'hover:bg-white/8 hover:text-foreground',
+          hasDetails && 'hover:bg-foreground/8 hover:text-foreground',
           isError && 'text-foreground/70'
         )}
       >
@@ -534,7 +575,7 @@ function ToolDetails({ tool }: { tool: ToolPart }): React.JSX.Element {
   return (
     <div className="ml-5 flex flex-col gap-2 text-[13px] text-foreground/85">
       {errorText && (
-        <div className="rounded-md bg-white/4 px-2.5 py-1.5 text-foreground/85">
+        <div className="rounded-md bg-foreground/4 px-2.5 py-1.5 text-foreground/85">
           <span className="text-muted-foreground">Error:</span> {errorText}
         </div>
       )}
@@ -644,18 +685,9 @@ function describeFile(p: string): string {
   return `${kind} · ${ext.toUpperCase()}`
 }
 
-function FileRefIcon({ path }: { path: string }): React.JSX.Element {
-  const ext = extOf(path)
-  const className = 'size-4 text-foreground/70'
-  if (ext === 'json') return <FileJson className={className} />
-  if (['ts', 'tsx', 'js', 'jsx', 'py', 'go', 'rs'].includes(ext))
-    return <FileCode2 className={className} />
-  return <FileText className={className} />
-}
-
 function FileReferences({ paths }: { paths: string[] }): React.JSX.Element {
   return (
-    <div className="flex flex-col divide-y divide-white/8 rounded-xl bg-white/4">
+    <div className="flex flex-col divide-y divide-foreground/8 rounded-xl bg-foreground/4">
       {paths.map((p) => (
         <FileReferenceRow key={p} path={p} />
       ))}
@@ -684,8 +716,8 @@ function FileReferenceRow({ path }: { path: string }): React.JSX.Element {
 
   return (
     <div className="flex items-center gap-3 px-3 py-2.5">
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white/6">
-        <FileRefIcon path={path} />
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-foreground/6">
+        <FileIcon path={path} className="size-4" />
       </span>
       <div className="min-w-0 flex-1">
         <div className="truncate text-[13px] font-medium text-foreground/95">{basename(path)}</div>
@@ -696,7 +728,7 @@ function FileReferenceRow({ path }: { path: string }): React.JSX.Element {
           <Button
             variant="ghost"
             size="xs"
-            className="gap-1 bg-white/6 text-foreground/85 hover:bg-white/12"
+            className="gap-1 bg-foreground/6 text-foreground/85 hover:bg-foreground/12"
           >
             {copied ? 'Copied' : 'Open'}
             <ChevronDown className="size-3" />
@@ -731,8 +763,8 @@ function ActionButton({
       aria-pressed={active}
       title={label}
       className={cn(
-        'inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-white/8 hover:text-foreground',
-        active && 'bg-white/8 text-foreground'
+        'inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/8 hover:text-foreground',
+        active && 'bg-foreground/8 text-foreground'
       )}
     >
       {children}

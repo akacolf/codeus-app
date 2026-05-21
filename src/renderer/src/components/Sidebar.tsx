@@ -167,7 +167,7 @@ export function Sidebar({
                       <button
                         type="button"
                         onClick={() => toggle(g.cwd)}
-                        className="flex w-full items-center gap-1.5 rounded-md px-2.5 py-1.5 text-left text-[11px] text-muted-foreground hover:bg-white/5 hover:text-foreground"
+                        className="flex w-full items-center gap-1.5 rounded-md px-2.5 py-1.5 text-left text-[11px] text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
                       >
                         <ChevronRight
                           className={cn('size-3 transition-transform', !isCollapsed && 'rotate-90')}
@@ -194,7 +194,7 @@ export function Sidebar({
         </div>
 
         <div className="flex shrink-0 items-center gap-3 px-3 py-3">
-          <div className="inline-flex size-9 items-center justify-center rounded-full bg-white text-sm font-medium text-black">
+          <div className="inline-flex size-9 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-foreground">
             {avatarChar}
           </div>
           <div className="flex min-w-0 flex-1 flex-col leading-tight">
@@ -256,7 +256,7 @@ function NavButton({
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-foreground/90 hover:bg-white/8"
+      className="flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-foreground/90 hover:bg-foreground/8"
     >
       <Icon className="size-[18px] text-muted-foreground" />
       <span>{label}</span>
@@ -302,8 +302,8 @@ function ChatRow({
             onClick={onSelect}
             aria-current={active}
             className={cn(
-              'block w-full truncate rounded-lg px-3 py-1.5 pr-8 text-left text-sm text-foreground/85 hover:bg-white/8',
-              active && 'bg-white/8 text-foreground'
+              'block w-full truncate rounded-lg px-3 py-1.5 pr-8 text-left text-sm text-foreground/85 hover:bg-foreground/8',
+              active && 'bg-foreground/8 text-foreground'
             )}
           >
             {chat.title || 'New chat'}
@@ -315,7 +315,7 @@ function ChatRow({
                 aria-label="Chat actions"
                 onClick={(e) => e.stopPropagation()}
                 className={cn(
-                  'absolute top-1/2 right-1 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-white/10 hover:text-foreground focus-visible:opacity-100 group-hover/row:opacity-100',
+                  'absolute top-1/2 right-1 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-foreground/10 hover:text-foreground focus-visible:opacity-100 group-hover/row:opacity-100',
                   menuOpen && 'opacity-100'
                 )}
               >
@@ -380,7 +380,7 @@ function ChatRowEditor({
           onCancel()
         }
       }}
-      className="block w-full rounded-lg bg-white/8 px-3 py-1.5 text-sm text-foreground outline-none"
+      className="block w-full rounded-lg bg-foreground/8 px-3 py-1.5 text-sm text-foreground outline-none"
     />
   )
 }

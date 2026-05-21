@@ -98,7 +98,7 @@ export function Toolbar({
             type="button"
             aria-label="QC Codeus menu"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-muted-foreground transition-colors hover:bg-white/8 hover:text-foreground data-[state=open]:bg-white/8 data-[state=open]:text-foreground"
+            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-muted-foreground transition-colors hover:bg-foreground/8 hover:text-foreground data-[state=open]:bg-foreground/8 data-[state=open]:text-foreground"
           >
             <img src={logoWhite} alt="" aria-hidden className="size-6" />
             <ChevronDown className="size-3.5 opacity-70" />
@@ -172,9 +172,9 @@ function ChromeButton({
       style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       className={cn(
         'inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors',
-        'hover:bg-white/8 hover:text-foreground',
+        'hover:bg-foreground/8 hover:text-foreground',
         'disabled:pointer-events-none disabled:opacity-30',
-        active && 'bg-white/8 text-foreground',
+        active && 'bg-foreground/8 text-foreground',
         '[&_svg]:size-[15px]'
       )}
     >

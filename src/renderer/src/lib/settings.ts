@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useState } from 'react'
 
 export const PERMISSIONS = [
-  { id: 'default', label: 'Default permissions', hint: 'Ask before risky actions' },
-  { id: 'read-only', label: 'Read-only', hint: 'Browse without edits' },
-  { id: 'auto', label: 'Auto-accept', hint: 'Trust all tool calls' }
+  { id: 'default', label: 'Default' },
+  { id: 'auto-review', label: 'Auto-review' },
+  { id: 'full-access', label: 'Full access' }
 ] as const
 
 export type PermissionId = (typeof PERMISSIONS)[number]['id']
+
+export const THEMES = [
+  { id: 'system', label: 'System' },
+  { id: 'light', label: 'Light' },
+  { id: 'dark', label: 'Dark' }
+] as const
+
+export type ThemeId = (typeof THEMES)[number]['id']
 
 // Research-preview lineup tuned for cost per quality. Opus was dropped — its
 // agentic gains over Sonnet 4.6 don't justify ~5× the spend for everyday IDE
@@ -27,13 +35,15 @@ interface Settings {
   model: ModelId
   userName: string
   runtimeMode: RuntimeMode
+  theme: ThemeId
 }
 
 const DEFAULTS: Settings = {
   permission: 'default',
   model: 'sonnet-4.6',
   userName: '',
-  runtimeMode: 'local'
+  runtimeMode: 'local',
+  theme: 'dark'
 }
 
 const KEY = 'qc-codeus.settings.v1'
@@ -47,6 +57,9 @@ function read(): Settings {
     // Drop stale model ids (e.g., `opus-4.7` after lineup changes) so the
     // composer doesn't render an empty pill on launch.
     if (!MODELS.some((m) => m.id === merged.model)) merged.model = DEFAULTS.model
+    if (!PERMISSIONS.some((p) => p.id === merged.permission))
+      merged.permission = DEFAULTS.permission
+    if (!THEMES.some((t) => t.id === merged.theme)) merged.theme = DEFAULTS.theme
     return merged
   } catch {
     return DEFAULTS

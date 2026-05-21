@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Cloud, Laptop, Maximize2, Minimize2, Plus, X } from 'lucide-react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { ImageAddon } from '@xterm/addon-image'
 import '@xterm/xterm/css/xterm.css'
 import { genId } from '@renderer/lib/chat'
 import { cn } from '@renderer/lib/utils'
@@ -167,7 +168,7 @@ export function TerminalPanel({ open, onClose }: TerminalPanelProps): React.JSX.
   return (
     <div
       className={cn(
-        'absolute right-0 bottom-0 left-0 z-20 flex flex-col bg-black shadow-[0_-12px_24px_rgba(0,0,0,0.55)] transition-transform duration-200 ease-out',
+        'absolute right-0 bottom-0 left-0 z-20 flex flex-col bg-background shadow-[0_-12px_24px_rgba(0,0,0,0.55)] transition-transform duration-200 ease-out',
         open ? 'translate-y-0' : 'pointer-events-none translate-y-full'
       )}
       style={{ height: effectiveHeight }}
@@ -201,7 +202,7 @@ export function TerminalPanel({ open, onClose }: TerminalPanelProps): React.JSX.
             onClick={addTab}
             aria-label="New terminal tab"
             title="New terminal"
-            className="inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-white/8 hover:text-foreground"
+            className="inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-foreground/8 hover:text-foreground"
           >
             <Plus className="size-3.5" />
           </button>
@@ -211,7 +212,7 @@ export function TerminalPanel({ open, onClose }: TerminalPanelProps): React.JSX.
           onClick={() => setFullscreen((v) => !v)}
           aria-label={fullscreen ? 'Exit fullscreen terminal' : 'Fullscreen terminal'}
           title={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-          className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-white/8 hover:text-foreground"
+          className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-foreground/8 hover:text-foreground"
         >
           {fullscreen ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
         </button>
@@ -219,7 +220,7 @@ export function TerminalPanel({ open, onClose }: TerminalPanelProps): React.JSX.
           type="button"
           onClick={onClose}
           aria-label="Close terminal panel"
-          className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-white/8 hover:text-foreground"
+          className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-foreground/8 hover:text-foreground"
         >
           <X className="size-3.5" />
         </button>
@@ -250,8 +251,8 @@ function TerminalTab({
   return (
     <div
       className={cn(
-        'group relative inline-flex h-6 shrink-0 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground',
-        active && 'bg-white/8 text-foreground'
+        'group relative inline-flex h-6 shrink-0 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground',
+        active && 'bg-foreground/8 text-foreground'
       )}
     >
       <button type="button" onClick={onSelect} className="inline-flex items-center gap-1.5 pr-3">
@@ -265,7 +266,7 @@ function TerminalTab({
           onClose()
         }}
         aria-label={`Close ${label}`}
-        className="absolute top-1/2 right-1 inline-flex size-3.5 -translate-y-1/2 items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-100 hover:bg-white/12 hover:text-foreground"
+        className="absolute top-1/2 right-1 inline-flex size-3.5 -translate-y-1/2 items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-100 hover:bg-foreground/12 hover:text-foreground"
       >
         <X className="size-2.5" />
       </button>
@@ -301,6 +302,17 @@ function TerminalInstance({
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
+    // Sixel + iTerm2 inline images (imgcat / kitty-style protocols). Lets users
+    // paste-render PNG/SVG output from CLIs like `chafa --format=sixel` or any
+    // tool that emits an iTerm IIP escape. Costs a Web Worker; harmless if no
+    // image escape ever arrives.
+    term.loadAddon(
+      new ImageAddon({
+        enableSizeReports: true,
+        sixelSupport: true,
+        iipSupport: true
+      })
+    )
     term.open(host)
     try {
       fit.fit()
@@ -338,6 +350,17 @@ function TerminalInstance({
       )
       const dataDisposable = term.onData((data) => pty.write(data))
       const resizeDisposable = term.onResize(({ cols, rows }) => pty.resize(cols, rows))
+      // Shift+Enter inserts a literal newline (LF, 0x0a) into the shell's input
+      // buffer instead of the usual CR (0x0d) that commits the line. Most
+      // shells' readline treats LF as a continuation, so users can compose
+      // multi-line heredocs / loops without typing `\` at end of line.
+      term.attachCustomKeyEventHandler((ev) => {
+        if (ev.type === 'keydown' && ev.shiftKey && ev.key === 'Enter') {
+          pty.write('\n')
+          return false
+        }
+        return true
+      })
       cleanup = (): void => {
         dataDisposable.dispose()
         resizeDisposable.dispose()

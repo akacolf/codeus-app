@@ -116,11 +116,11 @@ export const Markdown = memo(function Markdown({ text }: { text: string }): Reac
             )
           },
           blockquote: ({ children }) => (
-            <blockquote className="mt-3 border-l-2 border-white/20 pl-3 text-foreground/70">
+            <blockquote className="mt-3 border-l-2 border-foreground/20 pl-3 text-foreground/70">
               {children}
             </blockquote>
           ),
-          hr: () => <hr className="my-4 border-0 border-t border-white/10" />,
+          hr: () => <hr className="my-4 border-0 border-t border-foreground/10" />,
           table: ({ children }) => (
             <div className="mt-3 overflow-x-auto">
               <table className="text-xs">{children}</table>
@@ -141,7 +141,10 @@ export const Markdown = memo(function Markdown({ text }: { text: string }): Reac
               return <CodeBlock code={raw.replace(/\n$/, '')} lang={match?.[1] ?? ''} />
             }
             return (
-              <code {...rest} className="rounded bg-white/10 px-1 py-0.5 font-mono text-[0.92em]">
+              <code
+                {...rest}
+                className="rounded bg-foreground/10 px-1 py-0.5 font-mono text-[0.92em]"
+              >
                 {children}
               </code>
             )
@@ -260,7 +263,7 @@ interface BadgeMeta {
 
 // Subtle palette — the link text already carries the citation color, so the
 // badge stays muted enough to read alongside prose without screaming.
-const DEFAULT_BADGE: BadgeMeta = { className: 'bg-white/12 text-foreground/85' }
+const DEFAULT_BADGE: BadgeMeta = { className: 'bg-foreground/12 text-foreground/85' }
 const EXT_BADGE: Record<string, BadgeMeta> = {
   ts: { className: 'bg-sky-500/25 text-sky-200' },
   tsx: { className: 'bg-sky-500/25 text-sky-200' },
@@ -269,8 +272,8 @@ const EXT_BADGE: Record<string, BadgeMeta> = {
   mjs: { label: 'JS', className: 'bg-amber-400/25 text-amber-100' },
   cjs: { label: 'JS', className: 'bg-amber-400/25 text-amber-100' },
   json: { className: 'bg-yellow-500/20 text-yellow-100' },
-  md: { className: 'bg-white/15 text-foreground/85' },
-  mdx: { className: 'bg-white/15 text-foreground/85' },
+  md: { className: 'bg-foreground/15 text-foreground/85' },
+  mdx: { className: 'bg-foreground/15 text-foreground/85' },
   css: { className: 'bg-pink-500/25 text-pink-200' },
   scss: { className: 'bg-pink-500/25 text-pink-200' },
   html: { className: 'bg-orange-500/25 text-orange-200' },
@@ -319,7 +322,7 @@ function CodeBlock({ code, lang }: { code: string; lang: string }): React.JSX.El
   }, [code, normalized])
 
   return (
-    <div className="my-3 overflow-hidden rounded-xl bg-white/5">
+    <div className="my-3 overflow-hidden rounded-xl bg-foreground/5">
       <div className="flex items-center justify-between px-3 py-1.5 text-[11px] text-muted-foreground">
         <span>{lang || 'code'}</span>
         <button
@@ -330,7 +333,7 @@ function CodeBlock({ code, lang }: { code: string; lang: string }): React.JSX.El
               setTimeout(() => setCopied(false), 1200)
             })
           }}
-          className="inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-white/8 hover:text-foreground"
+          className="inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-foreground/8 hover:text-foreground"
           aria-label="Copy code"
         >
           {copied ? <Check className="size-3" /> : <Copy className="size-3" />}

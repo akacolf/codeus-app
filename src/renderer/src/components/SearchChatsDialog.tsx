@@ -64,7 +64,7 @@ export function SearchChatsDialog({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search chats"
-              className="h-10 w-full rounded-lg bg-white/5 pr-9 pl-9 text-sm outline-none placeholder:text-muted-foreground"
+              className="h-10 w-full rounded-lg bg-foreground/5 pr-9 pl-9 text-sm outline-none placeholder:text-muted-foreground"
             />
             {query && (
               <button
@@ -74,7 +74,7 @@ export function SearchChatsDialog({
                   setQuery('')
                   inputRef.current?.focus()
                 }}
-                className="absolute top-1/2 right-2 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-white/8 hover:text-foreground"
+                className="absolute top-1/2 right-2 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-foreground/8 hover:text-foreground"
               >
                 <X className="size-3.5" />
               </button>
@@ -103,8 +103,8 @@ export function SearchChatsDialog({
                   }}
                   aria-current={c.id === activeChatId}
                   className={cn(
-                    'flex w-full flex-col gap-0.5 rounded-lg px-3 py-2 text-left hover:bg-white/8',
-                    c.id === activeChatId && 'bg-white/8'
+                    'flex w-full flex-col gap-0.5 rounded-lg px-3 py-2 text-left hover:bg-foreground/8',
+                    c.id === activeChatId && 'bg-foreground/8'
                   )}
                 >
                   <span className="truncate text-sm text-foreground/90">

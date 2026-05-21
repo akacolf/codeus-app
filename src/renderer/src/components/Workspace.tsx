@@ -66,8 +66,8 @@ function TabBar({ open, activePath, onSelect, onClose }: TabBarProps): React.JSX
             className={cn(
               'group inline-flex h-7 shrink-0 items-center gap-1.5 rounded px-2 text-xs transition-colors',
               active
-                ? 'bg-white/8 text-foreground'
-                : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'
+                ? 'bg-foreground/8 text-foreground'
+                : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground'
             )}
           >
             <button
@@ -76,7 +76,7 @@ function TabBar({ open, activePath, onSelect, onClose }: TabBarProps): React.JSX
               className="inline-flex items-center gap-1.5"
             >
               <span className="font-mono">{basename(f.path)}</span>
-              {dirty && <span aria-hidden className="size-1.5 rounded-full bg-white/70" />}
+              {dirty && <span aria-hidden className="size-1.5 rounded-full bg-foreground/70" />}
             </button>
             <button
               type="button"
@@ -85,7 +85,7 @@ function TabBar({ open, activePath, onSelect, onClose }: TabBarProps): React.JSX
                 onClose(f.path)
               }}
               aria-label={`Close ${f.path}`}
-              className="inline-flex size-4 items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-100 hover:bg-white/12 hover:text-foreground"
+              className="inline-flex size-4 items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-100 hover:bg-foreground/12 hover:text-foreground"
             >
               <X className="size-2.5" />
             </button>
