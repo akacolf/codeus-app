@@ -7,12 +7,12 @@ import {
   FileCode2,
   FileJson,
   FileText,
-  FolderOpen,
   Loader2,
   Pencil,
   PencilLine,
   RefreshCw,
   RotateCw,
+  Search,
   Terminal,
   ThumbsDown,
   ThumbsUp,
@@ -278,13 +278,17 @@ function toolLabel(tool: ToolPart): string {
   const args = (tool.args ?? {}) as { path?: string; content?: string }
   const path = args.path ?? ''
   const present = tool.status === 'running'
+  const failed = tool.status === 'error'
   switch (tool.name) {
     case 'read_file':
+      if (failed) return `Couldn’t read ${path || 'file'}`
       return present ? `Reading ${path || 'file'}` : `Read ${path || 'file'}`
     case 'write_file':
+      if (failed) return `Couldn’t write ${path || 'file'}`
       return present ? `Writing ${path || 'file'}` : `Wrote ${path || 'file'}`
     case 'list_directory': {
       const where = path ? path : '.'
+      if (failed) return `Couldn’t explore ${where}`
       if (present) return `Exploring ${where}`
       const result = tool.result as { entries?: unknown[] } | undefined
       const count = Array.isArray(result?.entries) ? result.entries.length : null
@@ -293,6 +297,7 @@ function toolLabel(tool: ToolPart): string {
         : `Explored ${where}`
     }
     default:
+      if (failed) return `Failed: ${tool.name}`
       return present ? `Running ${tool.name}` : tool.name
   }
 }
@@ -419,7 +424,7 @@ function ToolIcon({ name }: { name: string }): React.JSX.Element {
   const className = 'size-3.5'
   if (name === 'read_file') return <FileText className={className} />
   if (name === 'write_file') return <PencilLine className={className} />
-  if (name === 'list_directory') return <FolderOpen className={className} />
+  if (name === 'list_directory') return <Search className={className} />
   return <Terminal className={className} />
 }
 

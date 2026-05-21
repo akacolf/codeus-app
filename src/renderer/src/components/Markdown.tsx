@@ -216,15 +216,76 @@ function Citation({
   return (
     <button
       type="button"
+      title={`${path} (line ${line})`}
       onClick={() => {
         openEditor()
         void revealInEditor(path, line)
       }}
-      className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[0.92em] text-foreground/95 transition-colors hover:bg-white/16"
+      className="inline-flex items-baseline gap-1 align-baseline text-[0.95em] text-sky-400 underline decoration-sky-400/40 decoration-1 underline-offset-2 transition-colors hover:text-sky-300 hover:decoration-sky-300/70"
     >
-      {children}
+      <FileTypeBadge path={path} />
+      <span>{children}</span>
     </button>
   )
+}
+
+// Compact extension badge rendered before a citation link, mirroring the
+// file-type chips Codex/Cursor show in chat references.
+function FileTypeBadge({ path }: { path: string }): React.JSX.Element {
+  const ext = pathExt(path)
+  const meta = EXT_BADGE[ext] ?? DEFAULT_BADGE
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        'inline-flex h-[14px] min-w-[18px] translate-y-[2px] items-center justify-center self-center rounded-[3px] px-[3px] font-mono text-[9px] leading-none font-semibold tracking-wide tabular-nums uppercase',
+        meta.className
+      )}
+    >
+      {meta.label ?? ext.toUpperCase() ?? '·'}
+    </span>
+  )
+}
+
+function pathExt(p: string): string {
+  const base = p.replace(/\\/g, '/').split('/').pop() ?? p
+  const dot = base.lastIndexOf('.')
+  return dot > 0 ? base.slice(dot + 1).toLowerCase() : ''
+}
+
+interface BadgeMeta {
+  label?: string
+  className: string
+}
+
+// Subtle palette — the link text already carries the citation color, so the
+// badge stays muted enough to read alongside prose without screaming.
+const DEFAULT_BADGE: BadgeMeta = { className: 'bg-white/12 text-foreground/85' }
+const EXT_BADGE: Record<string, BadgeMeta> = {
+  ts: { className: 'bg-sky-500/25 text-sky-200' },
+  tsx: { className: 'bg-sky-500/25 text-sky-200' },
+  js: { label: 'JS', className: 'bg-amber-400/25 text-amber-100' },
+  jsx: { label: 'JS', className: 'bg-amber-400/25 text-amber-100' },
+  mjs: { label: 'JS', className: 'bg-amber-400/25 text-amber-100' },
+  cjs: { label: 'JS', className: 'bg-amber-400/25 text-amber-100' },
+  json: { className: 'bg-yellow-500/20 text-yellow-100' },
+  md: { className: 'bg-white/15 text-foreground/85' },
+  mdx: { className: 'bg-white/15 text-foreground/85' },
+  css: { className: 'bg-pink-500/25 text-pink-200' },
+  scss: { className: 'bg-pink-500/25 text-pink-200' },
+  html: { className: 'bg-orange-500/25 text-orange-200' },
+  yml: { label: 'YML', className: 'bg-rose-500/20 text-rose-200' },
+  yaml: { label: 'YML', className: 'bg-rose-500/20 text-rose-200' },
+  toml: { className: 'bg-rose-500/20 text-rose-200' },
+  py: { className: 'bg-emerald-500/25 text-emerald-200' },
+  go: { className: 'bg-cyan-500/25 text-cyan-200' },
+  rs: { className: 'bg-orange-600/25 text-orange-200' },
+  sh: { className: 'bg-zinc-500/30 text-zinc-100' },
+  bash: { label: 'SH', className: 'bg-zinc-500/30 text-zinc-100' },
+  zsh: { label: 'SH', className: 'bg-zinc-500/30 text-zinc-100' },
+  sql: { className: 'bg-indigo-500/25 text-indigo-200' },
+  vue: { className: 'bg-emerald-500/25 text-emerald-200' },
+  svelte: { label: 'SVE', className: 'bg-orange-500/25 text-orange-200' }
 }
 
 function CodeBlock({ code, lang }: { code: string; lang: string }): React.JSX.Element {
