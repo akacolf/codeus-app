@@ -59,6 +59,7 @@ interface HomeProps {
   onOpenTerminal?: () => void
   onReveal?: () => void
   onOpenConnectTool?: () => void
+  onOpenGit?: () => void
 }
 
 function basename(path: string): string {
@@ -77,7 +78,8 @@ export function Home({
   onSubmit,
   onOpenTerminal,
   onReveal,
-  onOpenConnectTool
+  onOpenConnectTool,
+  onOpenGit
 }: HomeProps): React.JSX.Element {
   const [greetingIdx] = useState(() => Math.floor(Math.random() * GREETING_COUNT))
   const [projectPath, setProjectPath] = useState<string | null>(null)
@@ -154,6 +156,10 @@ export function Home({
                 </>
               )}
               <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => onOpenGit?.()} disabled={!onOpenGit}>
+                <GitBranch />
+                <span>Source control</span>
+              </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onReveal?.()} disabled={!onReveal}>
                 <FolderOpen />
                 <span>Reveal in Finder</span>
@@ -177,15 +183,13 @@ export function Home({
             </span>
           </span>
 
-          {branch && (
-            <span
-              className="inline-flex items-center gap-1.5 rounded-full px-2 py-1.5"
-              title={`Current git branch: ${branch}`}
-            >
-              <GitBranch className="size-3.5" />
-              {branch}
-            </span>
-          )}
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full px-2 py-1.5"
+            title={branch ? `Current git branch: ${branch}` : 'This folder is not a git repository'}
+          >
+            <GitBranch className="size-3.5" />
+            {branch ?? <span className="text-muted-foreground/70">no repo</span>}
+          </span>
         </div>
 
         <ul className="mt-8 flex w-full flex-col">

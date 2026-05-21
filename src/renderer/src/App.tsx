@@ -164,12 +164,10 @@ function App(): React.JSX.Element {
         onOpenEditor={isEditor ? undefined : openEditor}
         editorActive={isEditor}
         onOpenTerminal={() => setTerminalOpen((v) => !v)}
-        onRevealInFolder={revealInFolder}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenShortcuts={() => setShortcutsOpen(true)}
         onOpenAbout={() => setAboutOpen(true)}
         onOpenGit={() => setGitOpen(true)}
-        onOpenFolder={() => void window.api.project.pickFolder()}
         branchLabel={gitInfo?.branch ?? null}
         dirtyCount={gitInfo?.dirtyCount ?? 0}
       />
@@ -192,6 +190,7 @@ function App(): React.JSX.Element {
             onOpenTerminal={() => setTerminalOpen(true)}
             onReveal={revealInFolder}
             onOpenConnectTool={() => setConnectOpen(true)}
+            onOpenGit={() => setGitOpen(true)}
           />
         )}
         <TerminalPanel open={terminalOpen} onClose={() => setTerminalOpen(false)} />

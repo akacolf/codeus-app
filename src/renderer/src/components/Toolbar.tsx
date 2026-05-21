@@ -3,7 +3,6 @@ import {
   ArrowRight,
   ChevronDown,
   Code,
-  FolderOpen,
   GitBranch,
   Info,
   Keyboard,
@@ -38,12 +37,10 @@ interface ToolbarProps {
   onOpenEditor?: () => void
   editorActive?: boolean
   onOpenTerminal?: () => void
-  onRevealInFolder?: () => void
   onOpenSettings?: () => void
   onOpenShortcuts?: () => void
   onOpenAbout?: () => void
   onOpenGit?: () => void
-  onOpenFolder?: () => void
   branchLabel?: string | null
   dirtyCount?: number
 }
@@ -58,12 +55,10 @@ export function Toolbar({
   onOpenEditor,
   editorActive,
   onOpenTerminal,
-  onRevealInFolder,
   onOpenSettings,
   onOpenShortcuts,
   onOpenAbout,
   onOpenGit,
-  onOpenFolder,
   branchLabel,
   dirtyCount = 0
 }: ToolbarProps): React.JSX.Element {
@@ -99,21 +94,20 @@ export function Toolbar({
 
       <div className="flex-1" />
 
-      {onOpenGit && branchLabel !== undefined && (
+      {/* Git chip only appears when the active project IS a repo. The
+          "no repo" state is surfaced under the composer next to the project
+          chip, not as a separate toolbar pill. */}
+      {onOpenGit && branchLabel && (
         <button
           type="button"
           onClick={onOpenGit}
           aria-label="Source control"
-          title={
-            branchLabel === null
-              ? 'Not a git repository — click for details'
-              : `Branch ${branchLabel}${dirtyCount > 0 ? ` · ${dirtyCount} changed` : ''}`
-          }
+          title={`Branch ${branchLabel}${dirtyCount > 0 ? ` · ${dirtyCount} changed` : ''}`}
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           className="mr-1 inline-flex h-7 max-w-[12rem] items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-white/8 hover:text-foreground"
         >
           <GitBranch className="size-[13px]" />
-          <span className="truncate">{branchLabel ?? 'no repo'}</span>
+          <span className="truncate">{branchLabel}</span>
           {dirtyCount > 0 && (
             <span className="rounded-full bg-white/12 px-1.5 py-0.5 text-[10px] text-foreground">
               {dirtyCount}
@@ -140,27 +134,6 @@ export function Toolbar({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" sideOffset={6} className="w-64">
           <DropdownMenuLabel className="text-muted-foreground">QC Codeus</DropdownMenuLabel>
-
-          <DropdownMenuItem onSelect={() => onOpenFolder?.()} disabled={!onOpenFolder}>
-            <FolderOpen />
-            <span>Open folder…</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => onOpenGit?.()} disabled={!onOpenGit}>
-            <GitBranch />
-            <span>Source control</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => onOpenTerminal?.()} disabled={!onOpenTerminal}>
-            <Terminal />
-            <span>Open terminal</span>
-            <ShortcutHint id="open-terminal" />
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => onRevealInFolder?.()} disabled={!onRevealInFolder}>
-            <FolderOpen />
-            <span>Reveal in Finder</span>
-            <ShortcutHint id="reveal-in-folder" />
-          </DropdownMenuItem>
-
-          <DropdownMenuSeparator />
 
           <DropdownMenuItem onSelect={() => onOpenShortcuts?.()} disabled={!onOpenShortcuts}>
             <Keyboard />
