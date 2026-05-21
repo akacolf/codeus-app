@@ -4,6 +4,7 @@ import {
   ChevronDown,
   Code,
   FolderOpen,
+  GitBranch,
   Info,
   Keyboard,
   PanelLeft,
@@ -41,6 +42,10 @@ interface ToolbarProps {
   onOpenSettings?: () => void
   onOpenShortcuts?: () => void
   onOpenAbout?: () => void
+  onOpenGit?: () => void
+  onOpenFolder?: () => void
+  branchLabel?: string | null
+  dirtyCount?: number
 }
 
 export function Toolbar({
@@ -56,7 +61,11 @@ export function Toolbar({
   onRevealInFolder,
   onOpenSettings,
   onOpenShortcuts,
-  onOpenAbout
+  onOpenAbout,
+  onOpenGit,
+  onOpenFolder,
+  branchLabel,
+  dirtyCount = 0
 }: ToolbarProps): React.JSX.Element {
   const ToggleIcon = sidebarOpen ? PanelLeftOpen : PanelLeft
   return (
@@ -90,6 +99,29 @@ export function Toolbar({
 
       <div className="flex-1" />
 
+      {onOpenGit && branchLabel !== undefined && (
+        <button
+          type="button"
+          onClick={onOpenGit}
+          aria-label="Source control"
+          title={
+            branchLabel === null
+              ? 'Not a git repository — click for details'
+              : `Branch ${branchLabel}${dirtyCount > 0 ? ` · ${dirtyCount} changed` : ''}`
+          }
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          className="mr-1 inline-flex h-7 max-w-[12rem] items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-white/8 hover:text-foreground"
+        >
+          <GitBranch className="size-[13px]" />
+          <span className="truncate">{branchLabel ?? 'no repo'}</span>
+          {dirtyCount > 0 && (
+            <span className="rounded-full bg-white/12 px-1.5 py-0.5 text-[10px] text-foreground">
+              {dirtyCount}
+            </span>
+          )}
+        </button>
+      )}
+
       <ChromeButton label="Open terminal" onClick={onOpenTerminal} disabled={!onOpenTerminal}>
         <Terminal />
       </ChromeButton>
@@ -109,6 +141,14 @@ export function Toolbar({
         <DropdownMenuContent align="end" sideOffset={6} className="w-64">
           <DropdownMenuLabel className="text-muted-foreground">QC Codeus</DropdownMenuLabel>
 
+          <DropdownMenuItem onSelect={() => onOpenFolder?.()} disabled={!onOpenFolder}>
+            <FolderOpen />
+            <span>Open folder…</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onOpenGit?.()} disabled={!onOpenGit}>
+            <GitBranch />
+            <span>Source control</span>
+          </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => onOpenTerminal?.()} disabled={!onOpenTerminal}>
             <Terminal />
             <span>Open terminal</span>

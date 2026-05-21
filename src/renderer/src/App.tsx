@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { GitPanel } from './components/GitPanel'
 import { Home } from './components/Home'
 import { SearchChatsDialog } from './components/SearchChatsDialog'
 import { SettingsDialog } from './components/SettingsDialog'
@@ -36,7 +37,9 @@ function App(): React.JSX.Element {
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
   const [connectOpen, setConnectOpen] = useState(false)
+  const [gitOpen, setGitOpen] = useState(false)
   const [terminalOpen, setTerminalOpen] = useState(false)
+  const [gitInfo, setGitInfo] = useState<{ branch: string | null; dirtyCount: number } | null>(null)
   const [chrome, setChrome] = useState<{ fullscreen: boolean; maximized: boolean }>({
     fullscreen: false,
     maximized: false
@@ -70,8 +73,33 @@ function App(): React.JSX.Element {
   useEffect(() => {
     void window.api.projectCwd().then(setProjectCwd)
     const unsub = window.api.onChromeState((s) => setChrome(s))
-    return unsub
+    const unsubProject = window.api.project.onChanged(({ cwd }) => setProjectCwd(cwd))
+    return (): void => {
+      unsub()
+      unsubProject()
+    }
   }, [])
+
+  // Poll git status: on project change, on focus, and every 8s while the window
+  // is active. Cheap (one spawned `git` invocation per pulse).
+  useEffect(() => {
+    let cancelled = false
+    const tick = async (): Promise<void> => {
+      const s = await window.api.git.status()
+      if (cancelled) return
+      if (s.isRepo) setGitInfo({ branch: s.branch, dirtyCount: s.files.length })
+      else setGitInfo({ branch: null, dirtyCount: 0 })
+    }
+    void tick()
+    const interval = window.setInterval(() => void tick(), 8000)
+    const onFocus = (): void => void tick()
+    window.addEventListener('focus', onFocus)
+    return (): void => {
+      cancelled = true
+      window.clearInterval(interval)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [projectCwd, gitOpen])
 
   // Warn before unload when any editor tab has unsaved changes. Electron honors
   // `event.returnValue = ''` and surfaces the native confirm dialog.
@@ -140,6 +168,10 @@ function App(): React.JSX.Element {
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenShortcuts={() => setShortcutsOpen(true)}
         onOpenAbout={() => setAboutOpen(true)}
+        onOpenGit={() => setGitOpen(true)}
+        onOpenFolder={() => void window.api.project.pickFolder()}
+        branchLabel={gitInfo?.branch ?? null}
+        dirtyCount={gitInfo?.dirtyCount ?? 0}
       />
       <main className="min-h-0 flex-1">
         {isEditor ? (
@@ -241,6 +273,8 @@ function App(): React.JSX.Element {
           </p>
         </DialogContent>
       </Dialog>
+
+      <GitPanel open={gitOpen} onOpenChange={setGitOpen} />
 
       <UpdateBanner />
 

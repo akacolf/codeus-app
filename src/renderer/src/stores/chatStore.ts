@@ -3,6 +3,7 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import type { Chat, Message, View } from '../lib/chat'
 import { deriveTitle, genId, loadChats, saveChats } from '../lib/chat'
 import type { ModelId } from '../lib/settings'
+import { recordChars, recordRequest } from '../lib/usage'
 
 export interface ChatSettingsSnapshot {
   model: ModelId
@@ -256,6 +257,7 @@ function startAssistantStream(
   }))
 
   const appendDelta = (delta: string): void => {
+    recordChars(delta.length)
     useChatStore.setState((s) => ({
       chats: s.chats.map((c) =>
         c.id === chatId
@@ -288,6 +290,7 @@ function startAssistantStream(
     }))
   }
 
+  recordRequest()
   const cancel = window.api.chat.start(
     {
       requestId,

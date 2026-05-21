@@ -88,6 +88,21 @@ input {
   *::after {
     border-color: transparent;
   }
+
+  /* Suppress the system-accent (orange on macOS) focus ring that browsers
+     draw on default-styled buttons and on Radix triggers when focus returns
+     to them after a popover closes. Each interactive surface sets its own
+     visible focus style (typically a subtle white tint) elsewhere. */
+  *:focus,
+  *:focus-visible {
+    outline: none;
+    box-shadow: none;
+  }
+  button,
+  [role='button'],
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
 }
 
 /* shiki injects <pre class="shiki"> with an inline background; we suppress it

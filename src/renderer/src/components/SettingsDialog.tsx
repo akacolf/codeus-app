@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react'
+import { RotateCw } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -5,8 +7,10 @@ import {
   DialogHeader,
   DialogTitle
 } from '@renderer/components/ui/dialog'
+import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
 import { MODELS, PERMISSIONS, useSettings } from '@renderer/lib/settings'
+import { getUsage, resetUsage, subscribeUsage, type UsageSnapshot } from '@renderer/lib/usage'
 import { cn } from '@renderer/lib/utils'
 
 interface SettingsDialogProps {
@@ -14,8 +18,26 @@ interface SettingsDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
+function formatNumber(n: number): string {
+  return n.toLocaleString()
+}
+
+function formatChars(n: number): string {
+  if (n < 1000) return `${n} chars`
+  if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k chars`
+  return `${(n / 1_000_000).toFixed(2)}M chars`
+}
+
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): React.JSX.Element {
   const { settings, set } = useSettings()
+  const [usage, setUsage] = useState<UsageSnapshot>(() => getUsage())
+
+  useEffect(() => {
+    if (!open) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setUsage(getUsage())
+    return subscribeUsage(setUsage)
+  }, [open])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -53,12 +75,32 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
             />
           </Section>
 
-          <Section title="Usage & billing">
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              Model calls are routed through Quantum Club’s proxy to Vercel AI Gateway. During the
-              research preview, usage is on us — there is no user-facing billing and no API key to
-              configure.
-            </p>
+          <Section
+            title="Usage"
+            hint="Counted locally as the renderer sees streamed tokens. Resets at midnight."
+          >
+            <div className="grid grid-cols-2 gap-2">
+              <Stat label="Requests today" value={formatNumber(usage.requests)} />
+              <Stat label="Streamed today" value={formatChars(usage.chars)} />
+              <Stat label="Lifetime requests" value={formatNumber(usage.lifetimeRequests)} />
+              <Stat label="Lifetime streamed" value={formatChars(usage.lifetimeChars)} />
+            </div>
+            <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+              <p className="leading-relaxed">
+                Model calls route through Quantum Club’s proxy to Vercel AI Gateway. During the
+                research preview, usage is on us — there is no user-facing billing and no API key to
+                configure.
+              </p>
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={() => resetUsage()}
+                className="shrink-0 gap-1.5"
+              >
+                <RotateCw className="size-3" />
+                Reset
+              </Button>
+            </div>
           </Section>
         </div>
       </DialogContent>
@@ -82,6 +124,15 @@ function Section({
         {hint && <div className="text-xs text-muted-foreground">{hint}</div>}
       </div>
       {children}
+    </div>
+  )
+}
+
+function Stat({ label, value }: { label: string; value: string }): React.JSX.Element {
+  return (
+    <div className="flex flex-col gap-0.5 rounded-lg bg-white/5 px-3 py-2">
+      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="text-sm font-medium">{value}</span>
     </div>
   )
 }

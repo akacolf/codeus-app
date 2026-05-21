@@ -7,6 +7,8 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { registerChatIpc } from './chat'
 import { registerFsIpc } from './fs'
+import { registerGitIpc } from './git'
+import { getActiveProjectCwd, registerProjectIpc } from './project'
 import { killAllPtys, registerTerminalIpc } from './terminal'
 import { registerUpdater } from './updater'
 
@@ -60,7 +62,7 @@ function saveWindowState(state: WindowState): void {
 }
 
 function projectCwd(): string {
-  return process.env['QC_PROJECT_CWD'] || process.cwd()
+  return getActiveProjectCwd()
 }
 
 async function openTerminal(): Promise<{ ok: boolean; error?: string }> {
@@ -235,9 +237,11 @@ app.whenReady().then(() => {
   ipcMain.handle('project-cwd', () => projectCwd())
   ipcMain.handle('os-username', () => osUserName())
   ipcMain.handle('git-branch', () => gitBranch())
+  registerProjectIpc()
   registerChatIpc()
   registerFsIpc(projectCwd)
   registerTerminalIpc(projectCwd)
+  registerGitIpc(projectCwd)
   registerUpdater()
 
   createWindow()

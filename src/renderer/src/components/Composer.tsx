@@ -89,6 +89,17 @@ export function Composer({
     }
   }, [])
 
+  // Auto-grow the textarea up to ~8 lines, then internal scroll takes over.
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    const lineHeight = 22 // matches text-sm + leading-relaxed roughly
+    const max = lineHeight * 8 + 16
+    el.style.height = Math.min(el.scrollHeight, max) + 'px'
+    el.style.overflowY = el.scrollHeight > max ? 'auto' : 'hidden'
+  }, [draft])
+
   const send = (): void => {
     if (!canSend) return
     let body = draft.trim()
@@ -112,6 +123,12 @@ export function Composer({
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       send()
+      return
+    }
+    if (e.key === 'Escape') {
+      // ESC blurs the textarea so global shortcuts can fire without the
+      // composer eating them.
+      ;(e.target as HTMLTextAreaElement).blur()
     }
   }
 
@@ -220,8 +237,9 @@ export function Composer({
         onChange={(e) => onDraftChange(e.target.value)}
         onKeyDown={onKey}
         placeholder={placeholder ?? 'Ask QC Codeus anything.  @ to use plugins or mention files'}
-        rows={2}
+        rows={1}
         className="block w-full resize-none bg-transparent px-5 pt-4 pb-1 text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
+        style={{ minHeight: 44 }}
       />
 
       <div

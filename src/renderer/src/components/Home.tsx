@@ -83,12 +83,19 @@ export function Home({
   const [projectPath, setProjectPath] = useState<string | null>(null)
   const [branch, setBranch] = useState<string | null>(null)
   const [osName, setOsName] = useState<string>('')
+  const [recent, setRecent] = useState<string[]>([])
   const { settings } = useSettings()
 
-  useEffect(() => {
+  const refreshProjectInfo = (): void => {
     void window.api.projectCwd().then(setProjectPath)
     void window.api.gitBranch().then(setBranch)
+    void window.api.project.recent().then(setRecent)
+  }
+
+  useEffect(() => {
+    refreshProjectInfo()
     void window.api.osUserName().then(setOsName)
+    return window.api.project.onChanged(() => refreshProjectInfo())
   }, [])
 
   const projectName = projectPath ? basename(projectPath) : '…'
@@ -121,12 +128,31 @@ export function Home({
                 <ChevronDown className="size-3 opacity-60" />
               </ChipButton>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-56">
+            <DropdownMenuContent align="start" className="w-64">
               <DropdownMenuLabel className="text-muted-foreground">Project root</DropdownMenuLabel>
               <DropdownMenuItem disabled>
                 <FolderOpen />
                 <span className="truncate">{projectDisplay}</span>
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => void window.api.project.pickFolder()}>
+                <FolderOpen />
+                <span>Open folder…</span>
+              </DropdownMenuItem>
+              {recent.filter((p) => p !== projectPath).length > 0 && (
+                <>
+                  <DropdownMenuLabel className="text-muted-foreground">Recent</DropdownMenuLabel>
+                  {recent
+                    .filter((p) => p !== projectPath)
+                    .slice(0, 6)
+                    .map((p) => (
+                      <DropdownMenuItem key={p} onSelect={() => void window.api.project.setCwd(p)}>
+                        <FolderOpen />
+                        <span className="truncate">{tildeify(p)}</span>
+                      </DropdownMenuItem>
+                    ))}
+                </>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => onReveal?.()} disabled={!onReveal}>
                 <FolderOpen />

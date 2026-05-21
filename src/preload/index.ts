@@ -136,6 +136,66 @@ const updaterBridge = {
   onState: onUpdaterState
 }
 
+export interface ProjectChangeEvent {
+  cwd: string
+}
+
+function onProjectChanged(cb: (e: ProjectChangeEvent) => void): () => void {
+  const handler = (_e: IpcRendererEvent, p: ProjectChangeEvent): void => cb(p)
+  ipcRenderer.on('project:changed', handler)
+  return (): void => {
+    ipcRenderer.off('project:changed', handler)
+  }
+}
+
+const projectBridge = {
+  cwd: (): Promise<string> => ipcRenderer.invoke('project:cwd'),
+  recent: (): Promise<string[]> => ipcRenderer.invoke('project:recent'),
+  pickFolder: (): Promise<
+    { ok: true; cwd: string } | { ok: false; canceled?: boolean; error?: string }
+  > => ipcRenderer.invoke('project:pickFolder'),
+  setCwd: (path: string): Promise<{ ok: true; cwd: string } | { ok: false; error: string }> =>
+    ipcRenderer.invoke('project:setCwd', { path }),
+  clearRecent: (): Promise<{ ok: true }> => ipcRenderer.invoke('project:clearRecent'),
+  onChanged: onProjectChanged
+}
+
+export interface GitFileChange {
+  path: string
+  index: string
+  worktree: string
+  staged: boolean
+  untracked: boolean
+}
+
+export type GitStatus =
+  | {
+      isRepo: true
+      branch: string | null
+      upstream: string | null
+      ahead: number
+      behind: number
+      files: GitFileChange[]
+      hasRemote: boolean
+    }
+  | { isRepo: false }
+
+export type GitResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string }
+
+const gitBridge = {
+  status: (): Promise<GitStatus> => ipcRenderer.invoke('git:status'),
+  branches: (): Promise<GitResult<{ current: string | null; all: string[] }>> =>
+    ipcRenderer.invoke('git:branches'),
+  checkout: (name: string): Promise<GitResult> => ipcRenderer.invoke('git:checkout', { name }),
+  createBranch: (name: string): Promise<GitResult> =>
+    ipcRenderer.invoke('git:createBranch', { name }),
+  commit: (message: string, addAll = true): Promise<GitResult> =>
+    ipcRenderer.invoke('git:commit', { message, addAll }),
+  push: (opts?: { setUpstream?: boolean }): Promise<GitResult> =>
+    ipcRenderer.invoke('git:push', opts ?? {}),
+  pull: (): Promise<GitResult> => ipcRenderer.invoke('git:pull')
+}
+
 const api = {
   openTerminal: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('open-terminal'),
   revealInFolder: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('reveal-in-folder'),
@@ -146,7 +206,9 @@ const api = {
   chat: { start: startChat },
   fs: fsBridge,
   terminal: { open: openPty },
-  updater: updaterBridge
+  updater: updaterBridge,
+  project: projectBridge,
+  git: gitBridge
 }
 
 export type Api = typeof api
