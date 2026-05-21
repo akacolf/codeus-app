@@ -2,11 +2,13 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import type { Chat, Message, MessagePart, View } from '../lib/chat'
 import { deriveTitle, genId, loadChats, saveChats } from '../lib/chat'
-import type { ModelId } from '../lib/settings'
+import type { InferenceSpeed, ModelId, WorkMode } from '../lib/settings'
 import { recordChars, recordRequest } from '../lib/usage'
 
 export interface ChatSettingsSnapshot {
   model: ModelId
+  workMode: WorkMode
+  inferenceSpeed: InferenceSpeed
   projectCwd?: string
 }
 
@@ -421,6 +423,8 @@ function startAssistantStream(
     {
       requestId,
       model: settings.model,
+      workMode: settings.workMode,
+      inferenceSpeed: settings.inferenceSpeed,
       messages: history.map((m) => ({ role: m.role, content: m.text }))
     },
     {

@@ -27,6 +27,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from '@renderer/components/ui/dropdown-menu'
+import { useSettings } from '@renderer/lib/settings'
 import { useChatStore, type ChatSettingsSnapshot } from '@renderer/stores/chatStore'
 import { useWorkspaceStore } from '@renderer/stores/workspaceStore'
 import { Composer } from './Composer'
@@ -61,6 +62,13 @@ export function Thread({
   const regenerate = useChatStore((s) => s.regenerate)
   const editUserMessage = useChatStore((s) => s.editUserMessage)
   const retryAfterError = useChatStore((s) => s.retryAfterError)
+  const { settings: uiSettings } = useSettings()
+  const messageGap =
+    uiSettings.chatDensity === 'compact'
+      ? 'gap-3 pt-6 pb-36'
+      : uiSettings.chatDensity === 'spacious'
+        ? 'gap-7 pt-10 pb-52'
+        : 'gap-5 pt-8 pb-44'
 
   // Track whether the user is scrolled to the bottom — only auto-scroll when so.
   // The flag lives in a ref so the ResizeObserver callback reads the latest
@@ -133,7 +141,7 @@ export function Thread({
       <div ref={scrollerRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto px-6">
         {/* Extra bottom padding lets the last message scroll above the floating
             composer so the conversation isn't clipped at the bottom edge. */}
-        <div ref={contentRef} className="mx-auto flex w-full max-w-2xl flex-col gap-5 pt-8 pb-44">
+        <div ref={contentRef} className={cn('mx-auto flex w-full max-w-2xl flex-col', messageGap)}>
           {chat.messages.map((m) => (
             <MessageBubble
               key={m.id}
@@ -204,6 +212,11 @@ function MessageBubble({
 }): React.JSX.Element {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.text)
+  const { settings } = useSettings()
+  const userBubbleClass =
+    settings.messageStyle === 'minimal'
+      ? 'px-0 py-1 text-sm whitespace-pre-wrap text-foreground/95'
+      : 'rounded-2xl bg-input px-4 py-2.5 text-sm whitespace-pre-wrap'
 
   if (message.role === 'user') {
     if (editing) {
@@ -248,9 +261,7 @@ function MessageBubble({
     }
     return (
       <div className="group flex max-w-[80%] flex-col items-end gap-1 self-end">
-        <div className="rounded-2xl bg-input px-4 py-2.5 text-sm whitespace-pre-wrap">
-          {message.text}
-        </div>
+        <div className={userBubbleClass}>{message.text}</div>
         <div className="flex items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
           <span className="text-[11px] text-muted-foreground">
             {formatMessageTime(message.createdAt)}
@@ -448,7 +459,7 @@ function WorkRollup({
         <div className="ml-5 flex flex-col gap-3 border-l border-foreground/10 pl-4">
           {chain.map((p, i) =>
             p.kind === 'text' ? (
-              <div key={`c-t-${i}`} className="text-[13px] text-foreground/75 italic">
+              <div key={`c-t-${i}`} className="text-[13px] text-foreground/75 [&_em]:not-italic">
                 <Markdown text={p.text} />
               </div>
             ) : (
@@ -717,7 +728,7 @@ function FileReferenceRow({ path }: { path: string }): React.JSX.Element {
   return (
     <div className="flex items-center gap-3 px-3 py-2.5">
       <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-foreground/6">
-        <FileIcon path={path} className="size-4" />
+        <FileIcon path={path} monochrome className="size-4 text-muted-foreground" />
       </span>
       <div className="min-w-0 flex-1">
         <div className="truncate text-[13px] font-medium text-foreground/95">{basename(path)}</div>

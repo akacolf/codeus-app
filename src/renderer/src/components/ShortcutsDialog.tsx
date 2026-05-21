@@ -6,7 +6,8 @@ import {
   DialogTitle
 } from '@renderer/components/ui/dialog'
 import { Kbd } from '@renderer/components/ui/kbd'
-import { SHORTCUTS } from '@renderer/lib/shortcuts'
+import { shortcutsForSubmitMode } from '@renderer/lib/shortcuts'
+import { useSettings } from '@renderer/lib/settings'
 
 interface ShortcutsDialogProps {
   open: boolean
@@ -14,6 +15,8 @@ interface ShortcutsDialogProps {
 }
 
 export function ShortcutsDialog({ open, onOpenChange }: ShortcutsDialogProps): React.JSX.Element {
+  const { settings } = useSettings()
+  const shortcuts = shortcutsForSubmitMode(settings.composerSubmitMode)
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -22,9 +25,9 @@ export function ShortcutsDialog({ open, onOpenChange }: ShortcutsDialogProps): R
           <DialogDescription>The keys QC Codeus responds to today.</DialogDescription>
         </DialogHeader>
 
-        <ul className="flex flex-col divide-y divide-foreground/5">
-          {SHORTCUTS.map((s) => (
-            <li key={s.id} className="flex items-center justify-between py-2.5">
+        <ul className="flex flex-col gap-px">
+          {shortcuts.map((s) => (
+            <li key={s.id} className="flex items-center justify-between rounded-lg py-2.5">
               <span className="text-sm text-foreground/85">{s.label}</span>
               <span className="flex items-center gap-0.5">
                 {s.keys.map((k) => (

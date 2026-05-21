@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useSettings, type ThemeId } from './settings'
+import { uiScaleById, useSettings, type ThemeId } from './settings'
 
 export type ResolvedTheme = 'light' | 'dark'
 
@@ -21,6 +21,29 @@ function apply(resolved: ResolvedTheme): void {
   root.classList.toggle('light', resolved === 'light')
 }
 
+function applyAppearance({
+  uiScale,
+  reducedMotion,
+  fontFamily,
+  pointerCursors
+}: {
+  uiScale: ReturnType<typeof useSettings>['settings']['uiScale']
+  reducedMotion: boolean
+  fontFamily: ReturnType<typeof useSettings>['settings']['fontFamily']
+  pointerCursors: boolean
+}): void {
+  const root = document.documentElement
+  root.style.setProperty('--qc-ui-font-size', `${uiScaleById(uiScale).fontSize}px`)
+  root.style.setProperty(
+    '--qc-font-family',
+    fontFamily === 'onest'
+      ? "'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      : "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+  )
+  root.classList.toggle('motion-reduced', reducedMotion)
+  root.classList.toggle('pointer-cursors', pointerCursors)
+}
+
 // Wire the renderer-side theme: applies the resolved class on mount and on any
 // settings change, and re-resolves when the OS scheme flips while on `system`.
 // Side-effect only — no React state, since callers don't need the resolved
@@ -32,6 +55,15 @@ export function useThemeEffect(): void {
   useEffect(() => {
     apply(resolveTheme(settings.theme))
   }, [settings.theme])
+
+  useEffect(() => {
+    applyAppearance({
+      uiScale: settings.uiScale,
+      reducedMotion: settings.reducedMotion,
+      fontFamily: settings.fontFamily,
+      pointerCursors: settings.pointerCursors
+    })
+  }, [settings.uiScale, settings.reducedMotion, settings.fontFamily, settings.pointerCursors])
 
   useEffect(() => {
     if (settings.theme !== 'system') return

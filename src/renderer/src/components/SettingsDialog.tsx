@@ -1,28 +1,58 @@
 import { useEffect, useState } from 'react'
 import {
   ArrowLeft,
+  Bell,
   Check,
   Cloud,
+  Code,
   Copy,
   Gauge,
   Keyboard,
+  Languages,
+  MessageSquare,
   Monitor,
   Moon,
   Palette,
+  PanelLeft,
   Plug,
   RotateCw,
+  Send,
   Settings as SettingsIcon,
   Sun,
   Terminal,
+  Type,
   User,
   X
 } from 'lucide-react'
+import { useTranslations } from 'use-intl'
 import { Loader } from './Loader'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
 import { cn } from '@renderer/lib/utils'
-import { THEMES, useSettings, type ThemeId } from '@renderer/lib/settings'
-import { SHORTCUTS } from '@renderer/lib/shortcuts'
+import {
+  CODE_FONT_SIZES,
+  FONT_FAMILIES,
+  LANGUAGES,
+  THEMES,
+  UI_SCALES,
+  useSettings,
+  type ChatDensity,
+  type CodeFontSize,
+  type CodeTheme,
+  type CompletionNotificationMode,
+  type ComposerSize,
+  type ComposerSubmitMode,
+  type FontFamily,
+  type InferenceSpeed,
+  type LanguageId,
+  type MessageStyle,
+  type RuntimeMode,
+  type SidebarWidth,
+  type ThemeId,
+  type UiScaleId,
+  type WorkMode
+} from '@renderer/lib/settings'
+import { shortcutsForSubmitMode } from '@renderer/lib/shortcuts'
 import { getUsage, resetUsage, subscribeUsage, type UsageSnapshot } from '@renderer/lib/usage'
 import { useChatStore } from '@renderer/stores/chatStore'
 
@@ -40,20 +70,21 @@ type SectionId = 'general' | 'appearance' | 'shortcuts' | 'mcp' | 'connections' 
 
 interface NavItem {
   id: SectionId
-  label: string
+  labelKey: string
   icon: React.ComponentType<{ className?: string }>
 }
 
 const NAV: NavItem[] = [
-  { id: 'general', label: 'General', icon: SettingsIcon },
-  { id: 'appearance', label: 'Appearance', icon: Palette },
-  { id: 'shortcuts', label: 'Keyboard shortcuts', icon: Keyboard },
-  { id: 'mcp', label: 'MCP servers', icon: Terminal },
-  { id: 'connections', label: 'Connections', icon: Plug },
-  { id: 'usage', label: 'Usage & billing', icon: Gauge }
+  { id: 'general', labelKey: 'general', icon: SettingsIcon },
+  { id: 'appearance', labelKey: 'appearance', icon: Palette },
+  { id: 'shortcuts', labelKey: 'shortcuts', icon: Keyboard },
+  { id: 'mcp', labelKey: 'mcp', icon: Terminal },
+  { id: 'connections', labelKey: 'connections', icon: Plug },
+  { id: 'usage', labelKey: 'usage', icon: Gauge }
 ]
 
 export function SettingsPage(): React.JSX.Element {
+  const t = useTranslations('settings')
   const [active, setActive] = useState<SectionId>('general')
   const closeSettings = useChatStore((s) => s.closeSettings)
 
@@ -68,7 +99,7 @@ export function SettingsPage(): React.JSX.Element {
           aria-label="Back to app"
         >
           <ArrowLeft className="size-3.5" />
-          Back to app
+          {t('backToApp')}
         </Button>
         <nav className="flex flex-col gap-0.5">
           {NAV.map((item) => {
@@ -87,7 +118,7 @@ export function SettingsPage(): React.JSX.Element {
                 )}
               >
                 <Icon className="size-4 shrink-0" />
-                <span className="truncate">{item.label}</span>
+                <span className="truncate">{t(`nav.${item.labelKey}`)}</span>
               </button>
             )
           })}
@@ -130,16 +161,119 @@ function PageHeader({ title, subtitle }: { title: string; subtitle?: string }): 
 
 function GeneralSection(): React.JSX.Element {
   const { settings, set } = useSettings()
+  const t = useTranslations('settings.general')
+  const workModeItems = [
+    { id: 'coding', label: t('workModeCoding'), hint: t('workModeCodingHint') },
+    { id: 'everyday', label: t('workModeEveryday'), hint: t('workModeEverydayHint') }
+  ] as const
+  const submitModeItems = [
+    { id: 'enter', label: t('submitEnter'), hint: t('submitEnterHint') },
+    { id: 'mod-enter', label: t('submitModEnter'), hint: t('submitModEnterHint') }
+  ] as const
+  const speedItems = [
+    { id: 'standard', label: t('speedStandard') },
+    { id: 'fast', label: t('speedFast') },
+    { id: 'deliberate', label: t('speedDeliberate') }
+  ] as const
+  const completionItems = [
+    { id: 'unfocused', label: t('notifyUnfocused') },
+    { id: 'always', label: t('notifyAlways') },
+    { id: 'never', label: t('notifyNever') }
+  ] as const
+
   return (
     <>
-      <PageHeader title="General" />
-      <Field icon={User} title="Display name" hint="Shown in the home greeting.">
+      <PageHeader title={t('title')} />
+      <Field icon={Code} title={t('workMode')} hint={t('workModeHint')}>
+        <ChoiceGrid
+          columns="grid-cols-1 sm:grid-cols-2"
+          items={workModeItems}
+          selectedId={settings.workMode}
+          onSelect={(id) => set('workMode', id as WorkMode)}
+        />
+      </Field>
+      <Field icon={User} title={t('displayName')} hint={t('displayNameHint')}>
         <Input
           value={settings.userName}
           placeholder="Your name"
           onChange={(e) => set('userName', e.target.value)}
           maxLength={40}
           className="max-w-sm"
+        />
+      </Field>
+      <Field icon={Languages} title={t('language')} hint={t('languageHint')}>
+        <ChoiceGrid
+          columns="grid-cols-2 sm:grid-cols-4"
+          items={LANGUAGES.map((l) => ({
+            id: l.id,
+            label: l.id === 'system' ? t('systemLanguage') : l.label
+          }))}
+          selectedId={settings.language}
+          onSelect={(id) => set('language', id as LanguageId)}
+        />
+      </Field>
+      <Field icon={Send} title={t('sendMessages')} hint={t('sendMessagesHint')}>
+        <ChoiceGrid
+          columns="grid-cols-1 sm:grid-cols-2"
+          items={submitModeItems}
+          selectedId={settings.composerSubmitMode}
+          onSelect={(id) => set('composerSubmitMode', id as ComposerSubmitMode)}
+        />
+      </Field>
+      <Field icon={Terminal} title={t('defaultRuntime')} hint={t('defaultRuntimeHint')}>
+        <ChoiceGrid
+          columns="grid-cols-1 sm:grid-cols-2"
+          items={[
+            { id: 'local', label: t('localRuntime'), hint: t('localRuntimeHint') },
+            { id: 'cloud', label: t('cloudRuntime'), hint: t('cloudRuntimeHint') }
+          ]}
+          selectedId={settings.runtimeMode}
+          onSelect={(id) => set('runtimeMode', id as RuntimeMode)}
+        />
+      </Field>
+      <Field icon={PanelLeft} title={t('sidebar')} hint={t('sidebarHint')}>
+        <ToggleRow
+          label={t('openSidebarOnLaunch')}
+          checked={settings.openSidebarOnLaunch}
+          onChange={(checked) => set('openSidebarOnLaunch', checked)}
+        />
+      </Field>
+      <Field icon={Monitor} title={t('runtimeBehavior')} hint={t('runtimeBehaviorHint')}>
+        <ToggleRow
+          label={t('preventSleep')}
+          checked={settings.preventSleepWhileRunning}
+          onChange={(checked) => set('preventSleepWhileRunning', checked)}
+        />
+        <ToggleRow
+          label={t('projectlessChat')}
+          checked={settings.defaultProjectlessChat}
+          onChange={(checked) => set('defaultProjectlessChat', checked)}
+        />
+        <ToggleRow
+          label={t('suggestedPrompts')}
+          checked={settings.suggestedPrompts}
+          onChange={(checked) => set('suggestedPrompts', checked)}
+        />
+      </Field>
+      <Field icon={Gauge} title={t('speed')} hint={t('speedHint')}>
+        <ChoiceGrid
+          columns="grid-cols-3"
+          items={speedItems}
+          selectedId={settings.inferenceSpeed}
+          onSelect={(id) => set('inferenceSpeed', id as InferenceSpeed)}
+        />
+      </Field>
+      <Field icon={Bell} title={t('notifications')} hint={t('notificationsHint')}>
+        <ChoiceGrid
+          columns="grid-cols-1 sm:grid-cols-3"
+          items={completionItems}
+          selectedId={settings.completionNotifications}
+          onSelect={(id) => set('completionNotifications', id as CompletionNotificationMode)}
+        />
+        <ToggleRow
+          label={t('permissionNotifications')}
+          checked={settings.permissionNotifications}
+          onChange={(checked) => set('permissionNotifications', checked)}
         />
       </Field>
     </>
@@ -154,43 +288,157 @@ const THEME_ICON: Record<ThemeId, React.ComponentType<{ className?: string }>> =
 
 function AppearanceSection(): React.JSX.Element {
   const { settings, set } = useSettings()
+  const t = useTranslations('settings.appearance')
+  const themeItems = THEMES.map((theme) => ({
+    ...theme,
+    label: t(`theme${theme.id[0].toUpperCase()}${theme.id.slice(1)}`),
+    icon: THEME_ICON[theme.id]
+  }))
+  const scaleItems = UI_SCALES.map((scale) => ({
+    ...scale,
+    label: t(`scale${scale.id[0].toUpperCase()}${scale.id.slice(1)}`)
+  }))
+  const fontItems = FONT_FAMILIES.map((font) => ({
+    ...font,
+    label: font.id === 'system' ? t('fontSystem') : font.label
+  }))
+  const densityItems = [
+    { id: 'comfortable', label: t('densityComfortable') },
+    { id: 'compact', label: t('densityCompact') },
+    { id: 'spacious', label: t('densitySpacious') }
+  ] as const
+  const messageStyleItems = [
+    { id: 'bubble', label: t('messageBubble') },
+    { id: 'minimal', label: t('messageMinimal') }
+  ] as const
+  const composerSizeItems = [
+    { id: 'compact', label: t('sizeCompact') },
+    { id: 'default', label: t('sizeDefault') },
+    { id: 'large', label: t('sizeLarge') }
+  ] as const
+  const sidebarWidthItems = [
+    { id: 'narrow', label: t('widthNarrow') },
+    { id: 'default', label: t('widthDefault') },
+    { id: 'wide', label: t('widthWide') }
+  ] as const
+  const codeThemeItems = [
+    { id: 'github-dark-dimmed', label: t('codeThemeDimmed') },
+    { id: 'github-dark', label: t('codeThemeDark') },
+    { id: 'github-light', label: t('codeThemeLight') }
+  ] as const
+
   return (
     <>
-      <PageHeader title="Appearance" />
-      <Field icon={Palette} title="Theme" hint="Match your OS or pin a side.">
-        <div className="grid grid-cols-3 gap-2">
-          {THEMES.map((t) => {
-            const Icon = THEME_ICON[t.id]
-            const isActive = settings.theme === t.id
-            return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => set('theme', t.id)}
-                className={cn(
-                  'flex flex-col items-start gap-2 rounded-lg bg-foreground/5 p-3 text-left transition-colors hover:bg-foreground/8',
-                  isActive && 'bg-foreground/10 ring-1 ring-foreground/15'
-                )}
-                aria-pressed={isActive}
-              >
-                <Icon className="size-4 text-muted-foreground" />
-                <span className="text-sm font-medium">{t.label}</span>
-              </button>
-            )
-          })}
-        </div>
+      <PageHeader title={t('title')} />
+      <Field icon={Palette} title={t('theme')} hint={t('themeHint')}>
+        <ChoiceGrid
+          columns="grid-cols-3"
+          items={themeItems}
+          selectedId={settings.theme}
+          onSelect={(id) => set('theme', id as ThemeId)}
+        />
+      </Field>
+      <Field icon={Type} title={t('interfaceSize')} hint={t('interfaceSizeHint')}>
+        <ChoiceGrid
+          columns="grid-cols-3"
+          items={scaleItems}
+          selectedId={settings.uiScale}
+          onSelect={(id) => set('uiScale', id as UiScaleId)}
+        />
+      </Field>
+      <Field icon={Type} title={t('fontFamily')} hint={t('fontFamilyHint')}>
+        <ChoiceGrid
+          columns="grid-cols-2"
+          items={fontItems}
+          selectedId={settings.fontFamily}
+          onSelect={(id) => set('fontFamily', id as FontFamily)}
+        />
+      </Field>
+      <Field icon={MessageSquare} title={t('chatDensity')} hint={t('chatDensityHint')}>
+        <ChoiceGrid
+          columns="grid-cols-3"
+          items={densityItems}
+          selectedId={settings.chatDensity}
+          onSelect={(id) => set('chatDensity', id as ChatDensity)}
+        />
+      </Field>
+      <Field icon={MessageSquare} title={t('messageStyle')} hint={t('messageStyleHint')}>
+        <ChoiceGrid
+          columns="grid-cols-2"
+          items={messageStyleItems}
+          selectedId={settings.messageStyle}
+          onSelect={(id) => set('messageStyle', id as MessageStyle)}
+        />
+      </Field>
+      <Field icon={Send} title={t('composerSize')} hint={t('composerSizeHint')}>
+        <ChoiceGrid
+          columns="grid-cols-3"
+          items={composerSizeItems}
+          selectedId={settings.composerSize}
+          onSelect={(id) => set('composerSize', id as ComposerSize)}
+        />
+      </Field>
+      <Field icon={PanelLeft} title={t('sidebarWidth')} hint={t('sidebarWidthHint')}>
+        <ChoiceGrid
+          columns="grid-cols-3"
+          items={sidebarWidthItems}
+          selectedId={settings.sidebarWidth}
+          onSelect={(id) => set('sidebarWidth', id as SidebarWidth)}
+        />
+      </Field>
+      <Field icon={Code} title={t('editorFontSize')} hint={t('editorFontSizeHint')}>
+        <ChoiceGrid
+          columns="grid-cols-4"
+          items={CODE_FONT_SIZES.map((s) => ({ id: String(s.id), label: s.label }))}
+          selectedId={String(settings.editorFontSize)}
+          onSelect={(id) => set('editorFontSize', Number(id) as CodeFontSize)}
+        />
+      </Field>
+      <Field icon={Terminal} title={t('terminalFontSize')} hint={t('terminalFontSizeHint')}>
+        <ChoiceGrid
+          columns="grid-cols-4"
+          items={CODE_FONT_SIZES.map((s) => ({ id: String(s.id), label: s.label }))}
+          selectedId={String(settings.terminalFontSize)}
+          onSelect={(id) => set('terminalFontSize', Number(id) as CodeFontSize)}
+        />
+      </Field>
+      <Field icon={Code} title={t('codeTheme')} hint={t('codeThemeHint')}>
+        <ChoiceGrid
+          columns="grid-cols-3"
+          items={codeThemeItems}
+          selectedId={settings.codeTheme}
+          onSelect={(id) => set('codeTheme', id as CodeTheme)}
+        />
+      </Field>
+      <Field icon={Monitor} title={t('motion')} hint={t('motionHint')}>
+        <ToggleRow
+          label={t('reduceMotion')}
+          checked={settings.reducedMotion}
+          onChange={(checked) => set('reducedMotion', checked)}
+        />
+        <ToggleRow
+          label={t('pointerCursors')}
+          checked={settings.pointerCursors}
+          onChange={(checked) => set('pointerCursors', checked)}
+        />
       </Field>
     </>
   )
 }
 
 function ShortcutsSection(): React.JSX.Element {
+  const { settings } = useSettings()
+  const shortcuts = shortcutsForSubmitMode(settings.composerSubmitMode)
+
   return (
     <>
       <PageHeader title="Keyboard shortcuts" subtitle="Cheat sheet for the app." />
-      <div className="flex flex-col divide-y divide-foreground/8 rounded-xl bg-foreground/4">
-        {SHORTCUTS.map((s) => (
-          <div key={s.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
+      <div className="flex flex-col gap-px rounded-xl bg-foreground/4 p-1">
+        {shortcuts.map((s) => (
+          <div
+            key={s.id}
+            className="flex items-center justify-between rounded-lg px-3 py-2.5 text-sm"
+          >
             <span className="text-foreground/90">{s.label}</span>
             <div className="flex items-center gap-1">
               {s.keys.map((k, i) => (
@@ -460,6 +708,89 @@ function Field({
       </div>
       <div className="flex flex-col gap-2 pl-6">{children}</div>
     </div>
+  )
+}
+
+interface ChoiceItem {
+  id: string
+  label: string
+  hint?: string
+  icon?: React.ComponentType<{ className?: string }>
+}
+
+function ChoiceGrid({
+  items,
+  selectedId,
+  onSelect,
+  columns
+}: {
+  items: readonly ChoiceItem[]
+  selectedId: string
+  onSelect: (id: string) => void
+  columns: string
+}): React.JSX.Element {
+  return (
+    <div className={cn('grid gap-2', columns)}>
+      {items.map((item) => {
+        const Icon = item.icon
+        const isActive = selectedId === item.id
+        return (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => onSelect(item.id)}
+            className={cn(
+              'flex min-h-14 flex-col items-start justify-center gap-1 rounded-lg bg-foreground/5 px-3 py-2.5 text-left transition-colors hover:bg-foreground/8',
+              isActive && 'bg-foreground/12'
+            )}
+            aria-pressed={isActive}
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              {Icon && <Icon className="size-4 shrink-0 text-muted-foreground" />}
+              <span className="truncate text-sm font-medium">{item.label}</span>
+            </span>
+            {item.hint && (
+              <span className="line-clamp-2 text-xs text-muted-foreground">{item.hint}</span>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function ToggleRow({
+  label,
+  checked,
+  onChange
+}: {
+  label: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      className="flex w-full max-w-sm items-center justify-between gap-3 rounded-lg bg-foreground/5 px-3 py-2.5 text-left text-sm transition-colors hover:bg-foreground/8"
+      aria-pressed={checked}
+    >
+      <span>{label}</span>
+      <span
+        className={cn(
+          'relative h-5 w-9 rounded-full bg-foreground/10 transition-colors',
+          checked && 'bg-foreground/25'
+        )}
+        aria-hidden
+      >
+        <span
+          className={cn(
+            'absolute top-1/2 left-1 size-3.5 -translate-y-1/2 rounded-full bg-foreground/70 transition-transform',
+            checked && 'translate-x-4 bg-foreground'
+          )}
+        />
+      </span>
+    </button>
   )
 }
 

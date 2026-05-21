@@ -12,6 +12,7 @@ import {
   SquarePen,
   Terminal
 } from 'lucide-react'
+import { useTranslations } from 'use-intl'
 import { cn } from '@renderer/lib/utils'
 import {
   DropdownMenu,
@@ -24,7 +25,7 @@ import {
 } from '@renderer/components/ui/dropdown-menu'
 import { Kbd } from '@renderer/components/ui/kbd'
 import { shortcutById } from '@renderer/lib/shortcuts'
-import logoWhite from '../assets/logo-white.svg'
+import { Logo } from './Logo'
 
 interface ToolbarProps {
   sidebarOpen: boolean
@@ -55,6 +56,7 @@ export function Toolbar({
   onOpenShortcuts,
   onOpenAbout
 }: ToolbarProps): React.JSX.Element {
+  const t = useTranslations('toolbar')
   const ToggleIcon = sidebarOpen ? PanelLeftOpen : PanelLeft
   return (
     <div
@@ -100,7 +102,7 @@ export function Toolbar({
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-muted-foreground transition-colors hover:bg-foreground/8 hover:text-foreground data-[state=open]:bg-foreground/8 data-[state=open]:text-foreground"
           >
-            <img src={logoWhite} alt="" aria-hidden className="size-6" />
+            <Logo aria-hidden className="size-6" />
             <ChevronDown className="size-3.5 opacity-70" />
           </button>
         </DropdownMenuTrigger>
@@ -114,7 +116,7 @@ export function Toolbar({
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => onOpenSettings?.()} disabled={!onOpenSettings}>
             <Settings />
-            <span>Settings…</span>
+            <span>{t('settings')}</span>
             <ShortcutHint id="open-settings" />
           </DropdownMenuItem>
 

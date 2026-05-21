@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, nativeImage, screen } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, nativeImage, powerSaveBlocker, screen } from 'electron'
 import { spawn, spawnSync } from 'child_process'
 import { readFileSync, writeFileSync } from 'fs'
 import { userInfo } from 'os'
@@ -136,6 +136,18 @@ function gitBranch(): string | null {
   }
 }
 
+let preventSleepBlockerId: number | null = null
+
+function setPreventSleep(active: boolean): { ok: true } {
+  if (active && preventSleepBlockerId === null) {
+    preventSleepBlockerId = powerSaveBlocker.start('prevent-display-sleep')
+  } else if (!active && preventSleepBlockerId !== null) {
+    powerSaveBlocker.stop(preventSleepBlockerId)
+    preventSleepBlockerId = null
+  }
+  return { ok: true }
+}
+
 async function revealInFolder(): Promise<{ ok: boolean }> {
   shell.openPath(projectCwd())
   return { ok: true }
@@ -250,6 +262,9 @@ app.whenReady().then(() => {
   ipcMain.handle('project-cwd', () => projectCwd())
   ipcMain.handle('os-username', () => osUserName())
   ipcMain.handle('git-branch', () => gitBranch())
+  ipcMain.handle('power-save:set-prevent-sleep', (_event, active: boolean) =>
+    setPreventSleep(Boolean(active))
+  )
   registerProjectIpc()
   registerChatIpc()
   registerFsIpc(projectCwd)

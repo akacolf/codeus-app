@@ -16,7 +16,7 @@ import { cn } from '@renderer/lib/utils'
 import type { Chat } from '@renderer/lib/chat'
 import { UNGROUPED, groupChatsByProject } from '@renderer/lib/projects'
 import { useChatStore } from '@renderer/stores/chatStore'
-import { useSettings } from '@renderer/lib/settings'
+import { sidebarWidthById, useSettings, type SidebarWidth } from '@renderer/lib/settings'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,8 +24,8 @@ import {
   DropdownMenuTrigger
 } from './ui/dropdown-menu'
 import { ConfirmDialog } from './ConfirmDialog'
-import logoWhite from '../assets/logo-white.svg'
 import { ChromeButton } from './Toolbar'
+import { Logo } from './Logo'
 
 interface SidebarProps {
   open: boolean
@@ -38,6 +38,7 @@ interface SidebarProps {
   onBack?: () => void
   onForward?: () => void
   trafficLightInset: boolean
+  width: SidebarWidth
 }
 
 export function Sidebar({
@@ -50,7 +51,8 @@ export function Sidebar({
   onOpenSearch,
   onBack,
   onForward,
-  trafficLightInset
+  trafficLightInset,
+  width
 }: SidebarProps): React.JSX.Element {
   useEffect(() => {
     if (!open) return
@@ -117,6 +119,7 @@ export function Sidebar({
         {...(!open ? { inert: '' as unknown as boolean } : {})}
         className={cn(
           'absolute top-0 left-0 z-40 flex h-full w-72 flex-col bg-card transition-transform duration-200 ease-out',
+          sidebarWidthById(width).className,
           open ? 'translate-x-0' : '-translate-x-full'
         )}
       >
@@ -139,7 +142,7 @@ export function Sidebar({
         </div>
 
         <div className="flex items-center gap-2 px-5 pt-3 pb-5">
-          <img src={logoWhite} alt="" aria-hidden className="size-9" />
+          <Logo aria-hidden className="size-9" />
           <div className="flex min-w-0 flex-col leading-tight">
             <span className="text-lg font-medium tracking-tight">QC Codeus</span>
             <span className="text-[11px] text-muted-foreground">Research preview</span>

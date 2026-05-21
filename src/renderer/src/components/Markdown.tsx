@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import { Check, Copy } from 'lucide-react'
 import { codeToHtml, type BundledLanguage } from 'shiki'
 import { cn } from '@renderer/lib/utils'
+import { useSettings } from '@renderer/lib/settings'
 import { useChatStore } from '@renderer/stores/chatStore'
 import { useWorkspaceStore } from '@renderer/stores/workspaceStore'
 
@@ -224,7 +225,7 @@ function Citation({
         openEditor()
         void revealInEditor(path, line)
       }}
-      className="inline-flex items-baseline gap-1 align-baseline text-[0.95em] text-sky-400 underline decoration-sky-400/40 decoration-1 underline-offset-2 transition-colors hover:text-sky-300 hover:decoration-sky-300/70"
+      className="inline-flex items-baseline gap-1 align-baseline text-[0.95em] text-foreground/90 underline decoration-foreground/30 decoration-1 underline-offset-2 transition-colors hover:text-foreground hover:decoration-foreground/55"
     >
       <FileTypeBadge path={path} />
       <span>{children}</span>
@@ -261,34 +262,33 @@ interface BadgeMeta {
   className: string
 }
 
-// Subtle palette — the link text already carries the citation color, so the
-// badge stays muted enough to read alongside prose without screaming.
+// File citations stay monochrome with the rest of the research-preview chrome.
 const DEFAULT_BADGE: BadgeMeta = { className: 'bg-foreground/12 text-foreground/85' }
 const EXT_BADGE: Record<string, BadgeMeta> = {
-  ts: { className: 'bg-sky-500/25 text-sky-200' },
-  tsx: { className: 'bg-sky-500/25 text-sky-200' },
-  js: { label: 'JS', className: 'bg-amber-400/25 text-amber-100' },
-  jsx: { label: 'JS', className: 'bg-amber-400/25 text-amber-100' },
-  mjs: { label: 'JS', className: 'bg-amber-400/25 text-amber-100' },
-  cjs: { label: 'JS', className: 'bg-amber-400/25 text-amber-100' },
-  json: { className: 'bg-yellow-500/20 text-yellow-100' },
+  ts: DEFAULT_BADGE,
+  tsx: DEFAULT_BADGE,
+  js: { label: 'JS', className: DEFAULT_BADGE.className },
+  jsx: { label: 'JS', className: DEFAULT_BADGE.className },
+  mjs: { label: 'JS', className: DEFAULT_BADGE.className },
+  cjs: { label: 'JS', className: DEFAULT_BADGE.className },
+  json: DEFAULT_BADGE,
   md: { className: 'bg-foreground/15 text-foreground/85' },
   mdx: { className: 'bg-foreground/15 text-foreground/85' },
-  css: { className: 'bg-pink-500/25 text-pink-200' },
-  scss: { className: 'bg-pink-500/25 text-pink-200' },
-  html: { className: 'bg-orange-500/25 text-orange-200' },
-  yml: { label: 'YML', className: 'bg-rose-500/20 text-rose-200' },
-  yaml: { label: 'YML', className: 'bg-rose-500/20 text-rose-200' },
-  toml: { className: 'bg-rose-500/20 text-rose-200' },
-  py: { className: 'bg-emerald-500/25 text-emerald-200' },
-  go: { className: 'bg-cyan-500/25 text-cyan-200' },
-  rs: { className: 'bg-orange-600/25 text-orange-200' },
+  css: DEFAULT_BADGE,
+  scss: DEFAULT_BADGE,
+  html: DEFAULT_BADGE,
+  yml: { label: 'YML', className: DEFAULT_BADGE.className },
+  yaml: { label: 'YML', className: DEFAULT_BADGE.className },
+  toml: DEFAULT_BADGE,
+  py: DEFAULT_BADGE,
+  go: DEFAULT_BADGE,
+  rs: DEFAULT_BADGE,
   sh: { className: 'bg-zinc-500/30 text-zinc-100' },
   bash: { label: 'SH', className: 'bg-zinc-500/30 text-zinc-100' },
   zsh: { label: 'SH', className: 'bg-zinc-500/30 text-zinc-100' },
-  sql: { className: 'bg-indigo-500/25 text-indigo-200' },
-  vue: { className: 'bg-emerald-500/25 text-emerald-200' },
-  svelte: { label: 'SVE', className: 'bg-orange-500/25 text-orange-200' }
+  sql: DEFAULT_BADGE,
+  vue: DEFAULT_BADGE,
+  svelte: { label: 'SVE', className: DEFAULT_BADGE.className }
 }
 
 function CodeBlock({ code, lang }: { code: string; lang: string }): React.JSX.Element {
@@ -296,6 +296,7 @@ function CodeBlock({ code, lang }: { code: string; lang: string }): React.JSX.El
   const [html, setHtml] = useState<string | null>(null)
   const cancelled = useRef(false)
   const normalized = normalizeLang(lang)
+  const { settings } = useSettings()
 
   useEffect(() => {
     cancelled.current = false
@@ -308,7 +309,7 @@ function CodeBlock({ code, lang }: { code: string; lang: string }): React.JSX.El
     }
     void codeToHtml(code, {
       lang: normalized,
-      theme: 'github-dark-dimmed'
+      theme: settings.codeTheme
     })
       .then((out) => {
         if (!cancelled.current) setHtml(out)
@@ -319,7 +320,7 @@ function CodeBlock({ code, lang }: { code: string; lang: string }): React.JSX.El
     return (): void => {
       cancelled.current = true
     }
-  }, [code, normalized])
+  }, [code, normalized, settings.codeTheme])
 
   return (
     <div className="my-3 overflow-hidden rounded-xl bg-foreground/5">

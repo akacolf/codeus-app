@@ -1,5 +1,5 @@
 import { cn } from '@renderer/lib/utils'
-import logoWhite from '../assets/logo-white.svg'
+import { Logo } from './Logo'
 
 interface LoaderProps {
   size?: number
@@ -15,7 +15,7 @@ export function Loader({ size = 40, className, label }: LoaderProps): React.JSX.
       aria-label={label ?? 'Loading'}
       className={cn('inline-flex items-center justify-center', className)}
     >
-      <img src={logoWhite} alt="" aria-hidden="true" style={{ width: size, height: size }} />
+      <Logo aria-hidden="true" style={{ width: size, height: size }} />
       {label ? <span className="sr-only">{label}</span> : null}
     </div>
   )

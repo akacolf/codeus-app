@@ -9,6 +9,8 @@ import { getActiveProjectCwd } from './project'
 const StartParamsSchema = z.object({
   requestId: z.string().min(1),
   model: z.string().min(1),
+  workMode: z.enum(['coding', 'everyday']).optional(),
+  inferenceSpeed: z.enum(['standard', 'fast', 'deliberate']).optional(),
   messages: z
     .array(
       z.object({
@@ -94,7 +96,13 @@ function resolveInProject(rel: string): string {
   return abs
 }
 
-function systemPrompt(): string {
+function systemPrompt({
+  workMode,
+  inferenceSpeed
+}: {
+  workMode?: 'coding' | 'everyday'
+  inferenceSpeed?: 'standard' | 'fast' | 'deliberate'
+}): string {
   const cwd = getActiveProjectCwd()
   // Sharpen the tone: agentic, concise, evidence-first. The citation format
   // matters — Markdown.tsx in the renderer turns `path:line` references into
@@ -105,6 +113,15 @@ function systemPrompt(): string {
     '',
     `Active project: ${cwd}`,
     'Tools: read_file, write_file, list_directory — all scoped to the active project.',
+    '',
+    workMode === 'everyday'
+      ? 'Mode: everyday work. Keep explanations approachable and avoid deep implementation detail unless the user asks.'
+      : 'Mode: coding. Be precise about files, APIs, command outputs, and implementation tradeoffs.',
+    inferenceSpeed === 'fast'
+      ? 'Speed preference: fast. Prefer a short, high-confidence answer or narrow edit over exhaustive exploration.'
+      : inferenceSpeed === 'deliberate'
+        ? 'Speed preference: deliberate. Take extra care to verify code paths and edge cases before answering.'
+        : 'Speed preference: standard. Balance speed with verification.',
     '',
     'Operating principles:',
     '- Be intelligent, concise, and direct. Skip filler ("Certainly!", "Of course!"). No throat-clearing.',
@@ -119,7 +136,7 @@ function systemPrompt(): string {
 }
 
 async function runStream(wc: WebContents, params: StartParams): Promise<void> {
-  const { requestId, model, messages } = params
+  const { requestId, model, messages, workMode, inferenceSpeed } = params
   const controller = new AbortController()
   inFlight.set(requestId, controller)
 
@@ -172,7 +189,7 @@ async function runStream(wc: WebContents, params: StartParams): Promise<void> {
 
     const result = streamText({
       model: provider(modelId),
-      system: systemPrompt(),
+      system: systemPrompt({ workMode, inferenceSpeed }),
       messages: messages as ModelMessage[],
       stopWhen: stepCountIs(MAX_TOOL_STEPS),
       abortSignal: controller.signal,

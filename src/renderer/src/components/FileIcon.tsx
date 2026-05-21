@@ -5,11 +5,12 @@ import { fileIconUrl, folderIconUrl } from '@renderer/lib/file-icon'
 interface FileIconProps {
   path: string
   className?: string
+  monochrome?: boolean
 }
 
-export function FileIcon({ path, className }: FileIconProps): React.JSX.Element {
+export function FileIcon({ path, className, monochrome }: FileIconProps): React.JSX.Element {
   const url = fileIconUrl(path)
-  if (!url) return <File className={cn('size-3.5', className)} aria-hidden />
+  if (monochrome || !url) return <File className={cn('size-3.5', className)} aria-hidden />
   return (
     <img
       src={url}

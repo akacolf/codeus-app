@@ -18,6 +18,7 @@ import { cn } from '@renderer/lib/utils'
 import {
   MODELS,
   PERMISSIONS,
+  languageById,
   modelById,
   permissionById,
   useSettings,
@@ -97,6 +98,7 @@ export function Composer({
   const canSend = draft.trim().length > 0 || attachments.length > 0
   const speechAvailable = getSpeechRecognition() !== null
   const showStop = !!streamingStop
+  const composerSize = settings.composerSize
 
   // Stop voice recognition on unmount / when prop disappears.
   useEffect(() => {
@@ -214,7 +216,11 @@ export function Composer({
       }
     }
 
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (
+      e.key === 'Enter' &&
+      ((settings.composerSubmitMode === 'enter' && !e.shiftKey) ||
+        (settings.composerSubmitMode === 'mod-enter' && (e.metaKey || e.ctrlKey)))
+    ) {
       e.preventDefault()
       send()
       return
@@ -253,7 +259,7 @@ export function Composer({
     const rec = new Ctor()
     rec.continuous = true
     rec.interimResults = true
-    rec.lang = navigator.language || 'en-US'
+    rec.lang = languageById(settings.language).locale || navigator.language || 'en-US'
     transcribeBaseRef.current = draft ? draft + (draft.endsWith(' ') ? '' : ' ') : ''
     rec.onresult = (ev): void => {
       let interim = ''
@@ -305,7 +311,13 @@ export function Composer({
           placement={mentionPlacement}
         />
       )}
-      <div className="w-full rounded-3xl bg-input" onClick={() => textareaRef.current?.focus()}>
+      <div
+        className={cn(
+          'w-full bg-input',
+          composerSize === 'compact' ? 'rounded-2xl' : 'rounded-3xl'
+        )}
+        onClick={() => textareaRef.current?.focus()}
+      >
         <input
           ref={fileRef}
           type="file"
@@ -350,12 +362,24 @@ export function Composer({
           onKeyDown={onKey}
           placeholder={placeholder ?? 'Ask QC Codeus anything.  @ to mention files'}
           rows={1}
-          className="block w-full resize-none bg-transparent px-6 pt-4 pb-1 text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
-          style={{ minHeight: 56 }}
+          className={cn(
+            'block w-full resize-none bg-transparent text-sm leading-relaxed outline-none placeholder:text-muted-foreground',
+            composerSize === 'compact'
+              ? 'px-5 pt-3 pb-0'
+              : composerSize === 'large'
+                ? 'px-7 pt-5 pb-2'
+                : 'px-6 pt-4 pb-1'
+          )}
+          style={{
+            minHeight: composerSize === 'compact' ? 48 : composerSize === 'large' ? 68 : 56
+          }}
         />
 
         <div
-          className="flex items-center justify-between gap-2 px-3 pb-3"
+          className={cn(
+            'flex items-center justify-between gap-2 px-3',
+            composerSize === 'compact' ? 'pb-2' : composerSize === 'large' ? 'pb-4' : 'pb-3'
+          )}
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center gap-1">

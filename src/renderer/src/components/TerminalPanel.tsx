@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react'
 import { Cloud, Laptop, Maximize2, Minimize2, Plus, X } from 'lucide-react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
@@ -227,7 +227,12 @@ export function TerminalPanel({ open, onClose }: TerminalPanelProps): React.JSX.
       </div>
       <div className="relative min-h-0 flex-1 px-2 pb-2">
         {tabs.map((t) => (
-          <TerminalInstance key={t.id} visible={open && t.id === activeId} mode={t.mode} />
+          <TerminalInstance
+            key={t.id}
+            visible={open && t.id === activeId}
+            mode={t.mode}
+            fontSize={settings.terminalFontSize}
+          />
         ))}
       </div>
     </div>
@@ -276,14 +281,17 @@ function TerminalTab({
 
 function TerminalInstance({
   visible,
-  mode
+  mode,
+  fontSize
 }: {
   visible: boolean
   mode: RuntimeMode
+  fontSize: number
 }): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
+  const inputRef = useRef<(data: string) => void>(() => {})
 
   useEffect(() => {
     if (!hostRef.current || termRef.current) return
@@ -354,6 +362,7 @@ function TerminalInstance({
       )
       const dataDisposable = term.onData((data) => pty.write(data))
       const resizeDisposable = term.onResize(({ cols, rows }) => pty.resize(cols, rows))
+      inputRef.current = (data) => pty.write(data)
       // Bridge macOS-native editing shortcuts to readline / Claude-Code-style
       // keybindings. xterm.js forwards Ctrl-* keys raw (Ctrl+A, Ctrl+E, Ctrl+U,
       // Ctrl+K, Ctrl+W, Ctrl+R, Ctrl+L, Ctrl+C, Ctrl+D, …) as their ASCII
@@ -416,12 +425,13 @@ function TerminalInstance({
         pty.close()
       }
     } else {
-      cleanup = wireCloudSandbox(term)
+      cleanup = wireCloudSandbox(term, inputRef)
     }
 
     return (): void => {
       ro.disconnect()
       cleanup()
+      inputRef.current = () => {}
       term.dispose()
       termRef.current = null
       fitRef.current = null
@@ -441,9 +451,43 @@ function TerminalInstance({
     })
   }, [visible])
 
+  useEffect(() => {
+    if (!termRef.current) return
+    termRef.current.options.fontSize = fontSize
+    requestAnimationFrame(() => {
+      try {
+        fitRef.current?.fit()
+      } catch {
+        /* ignore */
+      }
+    })
+  }, [fontSize])
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>): void => {
+    if (e.dataTransfer.types.includes('Files')) {
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'copy'
+    }
+  }
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>): void => {
+    if (!e.dataTransfer.types.includes('Files')) return
+    e.preventDefault()
+    e.stopPropagation()
+    const paths = Array.from(e.dataTransfer.files)
+      .map((file) => (file as File & { path?: string }).path)
+      .filter((path): path is string => typeof path === 'string' && path.length > 0)
+
+    if (paths.length === 0) return
+    termRef.current?.focus()
+    inputRef.current(`${paths.map(shellQuotePath).join(' ')} `)
+  }
+
   return (
     <div
       ref={hostRef}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
       className={cn(
         'absolute inset-0 px-2 pb-2',
         visible ? 'visible' : 'invisible pointer-events-none'
@@ -452,12 +496,22 @@ function TerminalInstance({
   )
 }
 
+function shellQuotePath(path: string): string {
+  if (/Win/i.test(navigator.platform || '')) {
+    return /[\s"]/u.test(path) ? `"${path.replace(/"/g, '\\"')}"` : path
+  }
+  return `'${path.replace(/'/g, "'\\''")}'`
+}
+
 // Cloud mode = line-buffered command runner backed by @vercel/sandbox runCommand.
 // The SDK doesn't expose a streaming stdin/PTY, so we don't try to emulate one —
 // the user types a line, hits Enter, we ship it via IPC, and stream the output
 // back. Up arrow recalls history. Anything requiring a real TTY (vim, htop) won't
 // work; that's surfaced to the user via the connection banner.
-function wireCloudSandbox(term: Terminal): () => void {
+function wireCloudSandbox(
+  term: Terminal,
+  inputRef: MutableRefObject<(data: string) => void>
+): () => void {
   const PROMPT = '\x1b[2m$\x1b[0m '
   const history: string[] = []
   let historyIdx = -1
@@ -495,7 +549,7 @@ function wireCloudSandbox(term: Terminal): () => void {
     writePrompt()
   })()
 
-  const dataDisposable = term.onData((d) => {
+  const ingest = (d: string): void => {
     if (!started) return
     for (const ch of d) {
       const code = ch.charCodeAt(0)
@@ -529,7 +583,11 @@ function wireCloudSandbox(term: Terminal): () => void {
       historyIdx = Math.min(history.length, historyIdx + 1)
       replaceLine(historyIdx >= history.length ? '' : history[historyIdx])
     }
-  })
+  }
+
+  inputRef.current = ingest
+
+  const dataDisposable = term.onData(ingest)
 
   function replaceLine(next: string): void {
     // Clear current input visually

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type * as MonacoNS from 'monaco-editor'
+import { useSettings } from '@renderer/lib/settings'
 import { isDirty, useWorkspaceStore, type OpenFile } from '@renderer/stores/workspaceStore'
 
 const QC_THEME = 'qc-codeus-dark'
@@ -57,6 +58,7 @@ export function EditorPane({ file }: EditorPaneProps): React.JSX.Element {
   const saveActive = useWorkspaceStore((s) => s.saveActive)
   const pendingReveal = useWorkspaceStore((s) => s.pendingReveal)
   const clearPendingReveal = useWorkspaceStore((s) => s.clearPendingReveal)
+  const { settings } = useSettings()
   const monacoRef = useRef<typeof MonacoNS | null>(null)
   const editorRef = useRef<MonacoNS.editor.IStandaloneCodeEditor | null>(null)
   const language = useMemo(() => languageForPath(file.path), [file.path])
@@ -151,7 +153,7 @@ export function EditorPane({ file }: EditorPaneProps): React.JSX.Element {
           automaticLayout: true,
           fontFamily:
             'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
-          fontSize: 13,
+          fontSize: settings.editorFontSize,
           lineHeight: 1.55,
           minimap: { enabled: false },
           scrollBeyondLastLine: false,

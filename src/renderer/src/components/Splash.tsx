@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { cn } from '@renderer/lib/utils'
-import logoWhite from '../assets/logo-white.svg'
+import { Logo } from './Logo'
 
 interface SplashProps {
   durationMs?: number
@@ -28,12 +28,7 @@ export function Splash({ durationMs = 1400, onDone }: SplashProps): React.JSX.El
       )}
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     >
-      <img
-        src={logoWhite}
-        alt=""
-        aria-hidden="true"
-        className="size-32 animate-in fade-in zoom-in-95 duration-500"
-      />
+      <Logo aria-hidden="true" className="size-32 animate-in fade-in zoom-in-95 duration-500" />
     </div>
   )
 }

@@ -4,6 +4,8 @@ import { electronAPI } from '@electron-toolkit/preload'
 export interface ChatStartParams {
   requestId: string
   model: string
+  workMode?: 'coding' | 'everyday'
+  inferenceSpeed?: 'standard' | 'fast' | 'deliberate'
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
 }
 
@@ -312,6 +314,10 @@ const api = {
   projectCwd: (): Promise<string> => ipcRenderer.invoke('project-cwd'),
   osUserName: (): Promise<string> => ipcRenderer.invoke('os-username'),
   gitBranch: (): Promise<string | null> => ipcRenderer.invoke('git-branch'),
+  powerSave: {
+    setPreventSleep: (active: boolean): Promise<{ ok: true }> =>
+      ipcRenderer.invoke('power-save:set-prevent-sleep', active)
+  },
   onChromeState,
   chat: { start: startChat },
   fs: fsBridge,

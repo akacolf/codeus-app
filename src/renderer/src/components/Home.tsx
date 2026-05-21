@@ -63,6 +63,7 @@ interface HomeProps {
   onOpenGit?: () => void
   branch: string | null
   dirtyCount: number
+  showSuggestions: boolean
 }
 
 function basename(path: string): string {
@@ -84,7 +85,8 @@ export function Home({
   onOpenConnectTool,
   onOpenGit,
   branch,
-  dirtyCount
+  dirtyCount,
+  showSuggestions
 }: HomeProps): React.JSX.Element {
   const [greetingIdx] = useState(() => Math.floor(Math.random() * GREETING_COUNT))
   const [projectPath, setProjectPath] = useState<string | null>(null)
@@ -205,26 +207,28 @@ export function Home({
           )}
         </div>
 
-        <ul className="mt-8 flex w-full flex-col">
-          {SUGGESTIONS.map((s, i) => {
-            const Icon = s.icon
-            return (
-              <Fragment key={s.label}>
-                {i > 0 && <li role="presentation" className="h-px bg-foreground/8" />}
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => handleSuggestion(s)}
-                    className="flex w-full items-center gap-3 py-3.5 text-left text-sm text-muted-foreground transition-colors hover:text-foreground"
-                  >
-                    <Icon className="size-4 shrink-0 opacity-70" />
-                    <span>{s.label}</span>
-                  </button>
-                </li>
-              </Fragment>
-            )
-          })}
-        </ul>
+        {showSuggestions && (
+          <ul className="mt-8 flex w-full flex-col">
+            {SUGGESTIONS.map((s, i) => {
+              const Icon = s.icon
+              return (
+                <Fragment key={s.label}>
+                  {i > 0 && <li role="presentation" className="h-px bg-foreground/8" />}
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => handleSuggestion(s)}
+                      className="flex w-full items-center gap-3 py-3.5 text-left text-sm text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      <Icon className="size-4 shrink-0 opacity-70" />
+                      <span>{s.label}</span>
+                    </button>
+                  </li>
+                </Fragment>
+              )
+            })}
+          </ul>
+        )}
       </div>
     </div>
   )

@@ -22,6 +22,18 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'close-overlay', label: 'Close sidebar or dialog', keys: ['Esc'] }
 ]
 
+export function shortcutsForSubmitMode(mode: 'enter' | 'mod-enter'): Shortcut[] {
+  return SHORTCUTS.map((s) => {
+    if (s.id === 'send-message') {
+      return mode === 'mod-enter' ? { ...s, keys: [MOD, 'Enter'] } : { ...s, keys: ['Enter'] }
+    }
+    if (s.id === 'new-line') {
+      return mode === 'mod-enter' ? { ...s, keys: ['Enter'] } : { ...s, keys: ['Shift', 'Enter'] }
+    }
+    return s
+  })
+}
+
 export function shortcutById(id: string): Shortcut | undefined {
   return SHORTCUTS.find((s) => s.id === id)
 }

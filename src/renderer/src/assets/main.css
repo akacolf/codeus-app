@@ -85,15 +85,21 @@ body,
   margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font-family:
+  font-family: var(
+    --qc-font-family,
     'Onest Variable',
     ui-sans-serif,
     system-ui,
     -apple-system,
     'Segoe UI',
     Roboto,
-    sans-serif;
+    sans-serif
+  );
   font-feature-settings: 'ss01';
+}
+
+html {
+  font-size: var(--qc-ui-font-size, 16px);
 }
 
 body {
@@ -137,14 +143,14 @@ input {
 
   /* Tailwind v4 dropped the default `cursor: pointer` on buttons; restore it
      for interactive controls while keeping the I-beam for text fields. */
-  button:not(:disabled),
-  [role='button']:not([aria-disabled='true']),
-  a[href],
-  label[for],
-  summary,
-  [role='menuitem'],
-  [role='option'],
-  [role='tab'] {
+  html.pointer-cursors button:not(:disabled),
+  html.pointer-cursors [role='button']:not([aria-disabled='true']),
+  html.pointer-cursors a[href],
+  html.pointer-cursors label[for],
+  html.pointer-cursors summary,
+  html.pointer-cursors [role='menuitem'],
+  html.pointer-cursors [role='option'],
+  html.pointer-cursors [role='tab'] {
     cursor: pointer;
   }
   button:disabled,
@@ -170,4 +176,13 @@ input {
 }
 .shiki-host code {
   background: transparent;
+}
+
+.motion-reduced *,
+.motion-reduced *::before,
+.motion-reduced *::after {
+  scroll-behavior: auto !important;
+  transition-duration: 0.01ms !important;
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
 }

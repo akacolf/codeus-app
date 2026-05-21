@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { GitPanel } from './components/GitPanel'
 import { Home } from './components/Home'
 import { SearchChatsDialog } from './components/SearchChatsDialog'
@@ -31,8 +31,9 @@ function revealInFolder(): void {
 const IS_MAC = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform)
 
 function App(): React.JSX.Element {
+  const { settings } = useSettings()
   const [booting, setBooting] = useState(true)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(() => settings.openSidebarOnLaunch)
   const [searchOpen, setSearchOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
@@ -40,6 +41,8 @@ function App(): React.JSX.Element {
   const [gitOpen, setGitOpen] = useState(false)
   const [terminalOpen, setTerminalOpen] = useState(false)
   const [gitInfo, setGitInfo] = useState<{ branch: string | null; dirtyCount: number } | null>(null)
+  const [wasWindowFocused, setWasWindowFocused] = useState(true)
+  const lastNotifiedMessageIdRef = useRef<string | null>(null)
   const [chrome, setChrome] = useState<{ fullscreen: boolean; maximized: boolean }>({
     fullscreen: false,
     maximized: false
@@ -47,7 +50,6 @@ function App(): React.JSX.Element {
   const [projectCwd, setProjectCwd] = useState<string | undefined>(undefined)
   // Hoisted draft survives Home ↔ Thread transitions.
   const [draft, setDraft] = useState('')
-  const { settings } = useSettings()
   useThemeEffect()
 
   const chats = useChatStore((s) => s.chats)
@@ -65,15 +67,38 @@ function App(): React.JSX.Element {
   const sendMessageAction = useChatStore((s) => s.sendMessage)
 
   const activeChat = view.type === 'chat' ? (chats.find((c) => c.id === view.chatId) ?? null) : null
+  const activeChatId = activeChat?.id
+  const activeChatTitle = activeChat?.title
+  const activeChatStreamingMessageId = activeChat?.streamingMessageId
+  const activeChatLastMessage = activeChat?.messages.at(-1)
   const isEditor = view.type === 'editor'
   const isSettings = view.type === 'settings'
+  const anyStreaming = chats.some((c) => c.streamingMessageId !== undefined)
 
   const sendMessage = useCallback(
-    (text: string) => sendMessageAction(text, { model: settings.model, projectCwd }),
-    [sendMessageAction, settings.model, projectCwd]
+    (text: string) =>
+      sendMessageAction(text, {
+        model: settings.model,
+        workMode: settings.workMode,
+        inferenceSpeed: settings.inferenceSpeed,
+        projectCwd: settings.defaultProjectlessChat ? undefined : projectCwd
+      }),
+    [
+      sendMessageAction,
+      settings.model,
+      settings.workMode,
+      settings.inferenceSpeed,
+      settings.defaultProjectlessChat,
+      projectCwd
+    ]
   )
 
-  const settingsSnapshot = { model: settings.model, projectCwd }
+  const settingsSnapshot = {
+    model: settings.model,
+    workMode: settings.workMode,
+    inferenceSpeed: settings.inferenceSpeed,
+    projectCwd: settings.defaultProjectlessChat ? undefined : projectCwd
+  }
 
   useEffect(() => {
     void window.api.projectCwd().then(setProjectCwd)
@@ -84,6 +109,54 @@ function App(): React.JSX.Element {
       unsubProject()
     }
   }, [])
+
+  useEffect(() => {
+    const onFocus = (): void => setWasWindowFocused(true)
+    const onBlur = (): void => setWasWindowFocused(false)
+    window.addEventListener('focus', onFocus)
+    window.addEventListener('blur', onBlur)
+    return (): void => {
+      window.removeEventListener('focus', onFocus)
+      window.removeEventListener('blur', onBlur)
+    }
+  }, [])
+
+  useEffect(() => {
+    void window.api.powerSave.setPreventSleep(settings.preventSleepWhileRunning && anyStreaming)
+    return (): void => {
+      void window.api.powerSave.setPreventSleep(false)
+    }
+  }, [settings.preventSleepWhileRunning, anyStreaming])
+
+  useEffect(() => {
+    if (!activeChatId || !activeChatTitle) return
+    if (activeChatStreamingMessageId !== undefined) return
+    if (settings.completionNotifications === 'never') return
+    if (settings.completionNotifications === 'unfocused' && wasWindowFocused) return
+    if (
+      !activeChatLastMessage ||
+      activeChatLastMessage.role !== 'assistant' ||
+      activeChatLastMessage.text.length === 0
+    ) {
+      return
+    }
+    if (lastNotifiedMessageIdRef.current === activeChatLastMessage.id) return
+    if (!('Notification' in window)) return
+    if (Notification.permission === 'granted') {
+      lastNotifiedMessageIdRef.current = activeChatLastMessage.id
+      new Notification('QC Codeus finished', { body: activeChatTitle })
+    } else if (settings.permissionNotifications && Notification.permission === 'default') {
+      void Notification.requestPermission()
+    }
+  }, [
+    activeChatId,
+    activeChatTitle,
+    activeChatStreamingMessageId,
+    activeChatLastMessage,
+    settings.completionNotifications,
+    settings.permissionNotifications,
+    wasWindowFocused
+  ])
 
   // Poll git status: on project change, on focus, and every 8s while the window
   // is active. Cheap (one spawned `git` invocation per pulse).
@@ -197,6 +270,7 @@ function App(): React.JSX.Element {
             onOpenGit={() => setGitOpen(true)}
             branch={gitInfo?.branch ?? null}
             dirtyCount={gitInfo?.dirtyCount ?? 0}
+            showSuggestions={settings.suggestedPrompts}
           />
         )}
         <TerminalPanel open={terminalOpen} onClose={() => setTerminalOpen(false)} />
@@ -208,6 +282,7 @@ function App(): React.JSX.Element {
         chats={chats}
         activeChatId={activeChat?.id ?? null}
         trafficLightInset={trafficLightInset}
+        width={settings.sidebarWidth}
         onSelectChat={(id) => {
           selectChat(id)
           setSidebarOpen(false)
