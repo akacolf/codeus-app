@@ -116,12 +116,15 @@ export interface DirEntry {
 export type FsListResult = { ok: true; entries: DirEntry[] } | { ok: false; error: string }
 export type FsReadResult = { ok: true; content: string } | { ok: false; error: string }
 export type FsWriteResult = { ok: true } | { ok: false; error: string }
+export type FsFindResult = { ok: true; files: string[] } | { ok: false; error: string }
 
 const fsBridge = {
   listDir: (path?: string): Promise<FsListResult> => ipcRenderer.invoke('fs:listDir', { path }),
   readFile: (path: string): Promise<FsReadResult> => ipcRenderer.invoke('fs:readFile', { path }),
   writeFile: (path: string, content: string): Promise<FsWriteResult> =>
-    ipcRenderer.invoke('fs:writeFile', { path, content })
+    ipcRenderer.invoke('fs:writeFile', { path, content }),
+  findFiles: (query: string, limit = 40): Promise<FsFindResult> =>
+    ipcRenderer.invoke('fs:findFiles', { query, limit })
 }
 
 export interface ChromeState {
