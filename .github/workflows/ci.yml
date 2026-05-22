@@ -30,6 +30,9 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      - name: Test
+        run: bun test
+
   build:
     name: Build (${{ matrix.os }})
     needs: check
