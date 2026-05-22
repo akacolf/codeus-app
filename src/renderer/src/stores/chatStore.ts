@@ -36,6 +36,7 @@ interface ChatStore {
   selectChat: (id: string) => void
   renameChat: (id: string, title: string) => void
   deleteChat: (id: string) => void
+  clearAllChats: () => void
 
   sendMessage: (text: string, settings: ChatSettingsSnapshot) => void
   queueMessage: (text: string, settings: ChatSettingsSnapshot) => void
@@ -144,6 +145,16 @@ export const useChatStore = create<ChatStore>()(
       set((s) => ({
         chats: s.chats.map((c) => (c.id === id ? { ...c, title: trimmed } : c))
       }))
+    },
+
+    clearAllChats: () => {
+      for (const id of cancelByChatId.keys()) cancelChatStream(id)
+      set({
+        chats: [],
+        history: [{ type: 'home' }],
+        index: 0,
+        queued: {}
+      })
     },
 
     deleteChat: (id) => {

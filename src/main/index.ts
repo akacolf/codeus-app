@@ -11,7 +11,9 @@ import { registerGitIpc } from './git'
 import { refreshMcpLockFile, registerMcpIpc, startMcpServer, stopMcpServer } from './mcp'
 import { getActiveProjectCwd, onActiveProjectCwdChanged, registerProjectIpc } from './project'
 import { registerSandboxIpc, stopAllSandboxes } from './sandbox'
+import { getSystemSettings, loadSystemSettings, setSystemSettings, wireCloseToTray } from './system'
 import { killAllPtys, registerTerminalIpc } from './terminal'
+import { createTray, destroyTray, setTrayEnabled } from './tray'
 import { registerUpdater } from './updater'
 
 interface WindowState {
@@ -168,6 +170,13 @@ async function revealPath(relPath: string): Promise<{ ok: boolean }> {
   return { ok: true }
 }
 
+let mainWindowRef: BrowserWindow | null = null
+let isQuitting = false
+
+function getMainWindow(): BrowserWindow | null {
+  return mainWindowRef && !mainWindowRef.isDestroyed() ? mainWindowRef : null
+}
+
 function createWindow(): void {
   const saved = loadWindowState()
   const mainWindow = new BrowserWindow({
@@ -197,10 +206,18 @@ function createWindow(): void {
     }
   })
 
+  mainWindowRef = mainWindow
+  mainWindow.on('closed', () => {
+    if (mainWindowRef === mainWindow) mainWindowRef = null
+  })
+  wireCloseToTray(mainWindow, () => isQuitting)
+
   mainWindow.on('ready-to-show', () => {
     if (saved.maximized) mainWindow.maximize()
     if (saved.fullscreen) mainWindow.setFullScreen(true)
-    mainWindow.show()
+    // startMinimized: skip the initial show; the user can re-open from the
+    // tray. Honors the same setting electron passes as openAsHidden at login.
+    if (!getSystemSettings().startMinimized) mainWindow.show()
   })
 
   let saveTimer: NodeJS.Timeout | null = null
@@ -260,6 +277,7 @@ function createWindow(): void {
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('club.quantum.qccodeus')
+  loadSystemSettings()
 
   if (process.platform === 'darwin' && app.dock) {
     app.dock.setIcon(nativeImage.createFromPath(icon))
@@ -283,6 +301,28 @@ app.whenReady().then(() => {
   ipcMain.handle('shell:reveal-path', (_event, rel: string) =>
     revealPath(typeof rel === 'string' ? rel : '')
   )
+  const trayDeps = { getWindow: getMainWindow, getProjectCwd: projectCwd }
+  ipcMain.handle('tray:set-enabled', (_event, enabled: boolean) => {
+    setTrayEnabled(Boolean(enabled), trayDeps)
+    return { ok: true as const }
+  })
+  ipcMain.handle(
+    'system:set',
+    (
+      _event,
+      patch: { launchAtLogin?: boolean; startMinimized?: boolean; closeToTray?: boolean }
+    ) => {
+      const cleaned: Record<string, boolean> = {}
+      if (typeof patch.launchAtLogin === 'boolean') cleaned.launchAtLogin = patch.launchAtLogin
+      if (typeof patch.startMinimized === 'boolean') cleaned.startMinimized = patch.startMinimized
+      if (typeof patch.closeToTray === 'boolean') cleaned.closeToTray = patch.closeToTray
+      return setSystemSettings(cleaned)
+    }
+  )
+  ipcMain.handle('system:get', () => getSystemSettings())
+  // Tray defaults to visible — the renderer reconciles to the persisted setting
+  // once it mounts (a brief flicker is acceptable vs. a delayed appearance).
+  createTray(trayDeps)
   registerProjectIpc()
   registerChatIpc()
   registerFsIpc(projectCwd)
@@ -320,9 +360,11 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  isQuitting = true
   killAllPtys()
   void stopAllSandboxes()
   void stopMcpServer()
+  destroyTray()
 })
 
 // In this file you can include the rest of your app's specific main process

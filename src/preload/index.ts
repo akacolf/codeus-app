@@ -142,6 +142,16 @@ function onChromeState(cb: (s: ChromeState) => void): () => void {
   }
 }
 
+export type TrayCommand = 'new-chat' | 'open-terminal' | 'reveal-project'
+
+function onTrayCommand(cb: (cmd: TrayCommand) => void): () => void {
+  const handler = (_e: IpcRendererEvent, cmd: TrayCommand): void => cb(cmd)
+  ipcRenderer.on('tray:command', handler)
+  return (): void => {
+    ipcRenderer.off('tray:command', handler)
+  }
+}
+
 export type UpdaterState =
   | { kind: 'idle' }
   | { kind: 'checking' }
@@ -323,6 +333,21 @@ const api = {
       ipcRenderer.invoke('shell:reveal-path', relPath)
   },
   onChromeState,
+  tray: {
+    setEnabled: (enabled: boolean): Promise<{ ok: true }> =>
+      ipcRenderer.invoke('tray:set-enabled', enabled),
+    onCommand: onTrayCommand
+  },
+  system: {
+    get: (): Promise<{ launchAtLogin: boolean; startMinimized: boolean; closeToTray: boolean }> =>
+      ipcRenderer.invoke('system:get'),
+    set: (patch: {
+      launchAtLogin?: boolean
+      startMinimized?: boolean
+      closeToTray?: boolean
+    }): Promise<{ launchAtLogin: boolean; startMinimized: boolean; closeToTray: boolean }> =>
+      ipcRenderer.invoke('system:set', patch)
+  },
   chat: { start: startChat },
   fs: fsBridge,
   terminal: { open: openPty },

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type * as MonacoNS from 'monaco-editor'
-import { useSettings } from '@renderer/lib/settings'
+import { getSettings, useSettings } from '@renderer/lib/settings'
 import { isDirty, useWorkspaceStore, type OpenFile } from '@renderer/stores/workspaceStore'
 
 const QC_THEME = 'qc-codeus-dark'
@@ -107,6 +107,11 @@ export function EditorPane({ file }: EditorPaneProps): React.JSX.Element {
     monaco.editor.setTheme(QC_THEME)
 
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+      if (getSettings().editorFormatOnSave) {
+        // Best-effort: only fires if a formatter is registered for the
+        // language. Monaco swallows the run if none is, so we don't gate on it.
+        void editor.getAction('editor.action.formatDocument')?.run()
+      }
       void saveActive()
     })
 
@@ -155,15 +160,16 @@ export function EditorPane({ file }: EditorPaneProps): React.JSX.Element {
             'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
           fontSize: settings.editorFontSize,
           lineHeight: 1.55,
-          minimap: { enabled: false },
+          minimap: { enabled: settings.editorMinimap },
           scrollBeyondLastLine: false,
           smoothScrolling: true,
           cursorBlinking: 'smooth',
           renderLineHighlight: 'line',
           padding: { top: 12, bottom: 16 },
           guides: { indentation: true },
-          tabSize: 2,
-          wordWrap: 'off',
+          tabSize: settings.editorTabSize,
+          wordWrap: settings.editorWordWrap ? 'on' : 'off',
+          lineNumbers: settings.editorLineNumbers,
           fixedOverflowWidgets: true,
           stickyScroll: { enabled: false }
         }}

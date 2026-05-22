@@ -143,6 +143,27 @@ function App(): React.JSX.Element {
   }, [settings.preventSleepWhileRunning, anyStreaming])
 
   useEffect(() => {
+    void window.api.tray.setEnabled(settings.showTrayIcon)
+  }, [settings.showTrayIcon])
+
+  useEffect(() => {
+    void window.api.system.set({
+      launchAtLogin: settings.launchAtLogin,
+      startMinimized: settings.startMinimized,
+      closeToTray: settings.closeToTray
+    })
+  }, [settings.launchAtLogin, settings.startMinimized, settings.closeToTray])
+
+  useEffect(() => {
+    const unsub = window.api.tray.onCommand((cmd) => {
+      if (cmd === 'new-chat') newChat()
+      else if (cmd === 'open-terminal') setTerminalOpen(true)
+      else if (cmd === 'reveal-project') revealInFolder()
+    })
+    return (): void => unsub()
+  }, [newChat])
+
+  useEffect(() => {
     if (!activeChatId || !activeChatTitle) return
     if (activeChatStreamingMessageId !== undefined) return
     if (settings.completionNotifications === 'never') return

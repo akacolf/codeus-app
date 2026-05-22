@@ -6,7 +6,13 @@ import { ImageAddon } from '@xterm/addon-image'
 import '@xterm/xterm/css/xterm.css'
 import { genId } from '@renderer/lib/chat'
 import { cn } from '@renderer/lib/utils'
-import { useSettings, type RuntimeMode } from '@renderer/lib/settings'
+import {
+  useSettings,
+  type RuntimeMode,
+  type TerminalBellMode,
+  type TerminalCursorStyle,
+  type TerminalScrollback
+} from '@renderer/lib/settings'
 
 interface TerminalPanelProps {
   open: boolean
@@ -232,6 +238,11 @@ export function TerminalPanel({ open, onClose }: TerminalPanelProps): React.JSX.
             visible={open && t.id === activeId}
             mode={t.mode}
             fontSize={settings.terminalFontSize}
+            scrollback={settings.terminalScrollback}
+            cursorStyle={settings.terminalCursorStyle}
+            cursorBlink={settings.terminalCursorBlink}
+            bell={settings.terminalBell}
+            copyOnSelect={settings.terminalCopyOnSelect}
           />
         ))}
       </div>
@@ -282,11 +293,21 @@ function TerminalTab({
 function TerminalInstance({
   visible,
   mode,
-  fontSize
+  fontSize,
+  scrollback,
+  cursorStyle,
+  cursorBlink,
+  bell,
+  copyOnSelect
 }: {
   visible: boolean
   mode: RuntimeMode
   fontSize: number
+  scrollback: TerminalScrollback
+  cursorStyle: TerminalCursorStyle
+  cursorBlink: boolean
+  bell: TerminalBellMode
+  copyOnSelect: boolean
 }): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
@@ -302,7 +323,8 @@ function TerminalInstance({
         'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
       fontSize: 12.5,
       lineHeight: 1.25,
-      cursorBlink: true,
+      cursorBlink,
+      cursorStyle,
       allowProposedApi: true,
       // Option-as-Meta is what bash/zsh readline expects for word-motion keys
       // (Opt+B, Opt+F, Opt+Backspace, etc). Without this xterm.js eats the
@@ -310,7 +332,7 @@ function TerminalInstance({
       macOptionIsMeta: true,
       theme: THEME,
       convertEol: false,
-      scrollback: 5000
+      scrollback
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
@@ -436,6 +458,9 @@ function TerminalInstance({
       termRef.current = null
       fitRef.current = null
     }
+    // scrollback / cursorStyle / cursorBlink are captured at construction; their
+    // live-update effect below handles changes without recreating the terminal.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode])
 
   // When this tab becomes visible, refit and focus.
@@ -462,6 +487,52 @@ function TerminalInstance({
       }
     })
   }, [fontSize])
+
+  useEffect(() => {
+    if (!termRef.current) return
+    termRef.current.options.scrollback = scrollback
+    termRef.current.options.cursorStyle = cursorStyle
+    termRef.current.options.cursorBlink = cursorBlink
+  }, [scrollback, cursorStyle, cursorBlink])
+
+  // xterm v6 removed the bell sound option — bell is emitted as an event now,
+  // and the host plays it. Skip the AudioContext when bell === 'none'.
+  useEffect(() => {
+    if (bell !== 'sound' || !termRef.current) return
+    const disposable = termRef.current.onBell(() => {
+      try {
+        const Ctor =
+          window.AudioContext ??
+          (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+        if (!Ctor) return
+        const ctx = new Ctor()
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        osc.frequency.value = 880
+        gain.gain.value = 0.08
+        osc.start()
+        osc.stop(ctx.currentTime + 0.08)
+      } catch {
+        /* audio may be unavailable; bell is best-effort */
+      }
+    })
+    return (): void => disposable.dispose()
+  }, [bell])
+
+  useEffect(() => {
+    if (!copyOnSelect || !termRef.current) return
+    const disposable = termRef.current.onSelectionChange(() => {
+      const sel = termRef.current?.getSelection()
+      if (sel && sel.length > 0) {
+        void navigator.clipboard.writeText(sel).catch(() => {
+          /* clipboard may be blocked in some contexts; non-fatal */
+        })
+      }
+    })
+    return (): void => disposable.dispose()
+  }, [copyOnSelect])
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>): void => {
     if (e.dataTransfer.types.includes('Files')) {

@@ -14,9 +14,13 @@ const EN: Messages = {
     nav: {
       general: 'General',
       appearance: 'Appearance',
+      editor: 'Editor',
+      terminal: 'Terminal',
+      system: 'System',
       shortcuts: 'Keyboard shortcuts',
       mcp: 'MCP servers',
       connections: 'Connections',
+      privacy: 'Privacy & data',
       usage: 'Usage & billing'
     },
     general: {
@@ -50,6 +54,7 @@ const EN: Messages = {
       runtimeBehavior: 'Runtime behavior',
       runtimeBehaviorHint: 'Control how QC Codeus runs in the background.',
       preventSleep: 'Prevent sleep while running',
+      showTrayIcon: 'Show in the menu bar',
       projectlessChat: 'Default to projectless chat',
       suggestedPrompts: 'Suggested prompts',
       speed: 'Speed',

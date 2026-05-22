@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
 import {
+  AppWindow,
   ArrowLeft,
   Bell,
   Check,
   Cloud,
   Code,
   Copy,
+  FileCode,
   Gauge,
+  Hash,
   Keyboard,
   Languages,
   MessageSquare,
@@ -18,8 +21,10 @@ import {
   RotateCw,
   Send,
   Settings as SettingsIcon,
+  Shield,
   Sun,
   Terminal,
+  Trash2,
   Type,
   User,
   X
@@ -43,6 +48,8 @@ import {
   type ComposerSize,
   type ComposerSubmitMode,
   type DefaultOpenDestination,
+  type EditorLineNumbers,
+  type EditorTabSize,
   type FollowUpBehavior,
   type FontFamily,
   type InferenceSpeed,
@@ -50,6 +57,9 @@ import {
   type MessageStyle,
   type RuntimeMode,
   type SidebarWidth,
+  type TerminalBellMode,
+  type TerminalCursorStyle,
+  type TerminalScrollback,
   type ThemeId,
   type UiScaleId,
   type WorkMode
@@ -68,7 +78,17 @@ function formatChars(n: number): string {
   return `${(n / 1_000_000).toFixed(2)}M chars`
 }
 
-type SectionId = 'general' | 'appearance' | 'shortcuts' | 'mcp' | 'connections' | 'usage'
+type SectionId =
+  | 'general'
+  | 'appearance'
+  | 'editor'
+  | 'terminal'
+  | 'system'
+  | 'shortcuts'
+  | 'mcp'
+  | 'connections'
+  | 'privacy'
+  | 'usage'
 
 interface NavItem {
   id: SectionId
@@ -79,9 +99,13 @@ interface NavItem {
 const NAV: NavItem[] = [
   { id: 'general', labelKey: 'general', icon: SettingsIcon },
   { id: 'appearance', labelKey: 'appearance', icon: Palette },
+  { id: 'editor', labelKey: 'editor', icon: FileCode },
+  { id: 'terminal', labelKey: 'terminal', icon: Terminal },
+  { id: 'system', labelKey: 'system', icon: AppWindow },
   { id: 'shortcuts', labelKey: 'shortcuts', icon: Keyboard },
   { id: 'mcp', labelKey: 'mcp', icon: Terminal },
   { id: 'connections', labelKey: 'connections', icon: Plug },
+  { id: 'privacy', labelKey: 'privacy', icon: Shield },
   { id: 'usage', labelKey: 'usage', icon: Gauge }
 ]
 
@@ -141,12 +165,20 @@ function SectionRouter({ id }: { id: SectionId }): React.JSX.Element {
       return <GeneralSection />
     case 'appearance':
       return <AppearanceSection />
+    case 'editor':
+      return <EditorSection />
+    case 'terminal':
+      return <TerminalSection />
+    case 'system':
+      return <SystemSection />
     case 'shortcuts':
       return <ShortcutsSection />
     case 'mcp':
       return <McpSection />
     case 'connections':
       return <ConnectionsSection />
+    case 'privacy':
+      return <PrivacySection />
     case 'usage':
       return <UsageSection />
   }
@@ -254,6 +286,11 @@ function GeneralSection(): React.JSX.Element {
           label={t('preventSleep')}
           checked={settings.preventSleepWhileRunning}
           onChange={(checked) => set('preventSleepWhileRunning', checked)}
+        />
+        <ToggleRow
+          label={t('showTrayIcon')}
+          checked={settings.showTrayIcon}
+          onChange={(checked) => set('showTrayIcon', checked)}
         />
         <ToggleRow
           label={t('projectlessChat')}
@@ -677,6 +714,223 @@ function CloudSandboxField(): React.JSX.Element {
       </div>
       {error && <p className="text-xs text-red-300">{error}</p>}
     </Field>
+  )
+}
+
+function EditorSection(): React.JSX.Element {
+  const { settings, set } = useSettings()
+  const tabSizeItems = [
+    { id: '2', label: '2 spaces' },
+    { id: '4', label: '4 spaces' },
+    { id: '8', label: '8 spaces' }
+  ] as const
+  const lineNumberItems = [
+    { id: 'on', label: 'On' },
+    { id: 'off', label: 'Off' },
+    { id: 'relative', label: 'Relative' }
+  ] as const
+
+  return (
+    <>
+      <PageHeader title="Editor" subtitle="Tune how the Monaco editor renders code." />
+      <Field icon={Hash} title="Tab size" hint="Width of an indent step.">
+        <ChoiceGrid
+          columns="grid-cols-3"
+          items={tabSizeItems}
+          selectedId={String(settings.editorTabSize)}
+          onSelect={(id) => set('editorTabSize', Number(id) as EditorTabSize)}
+        />
+      </Field>
+      <Field
+        icon={FileCode}
+        title="Line numbers"
+        hint="Off hides the gutter; relative aids motion keys."
+      >
+        <ChoiceGrid
+          columns="grid-cols-3"
+          items={lineNumberItems}
+          selectedId={settings.editorLineNumbers}
+          onSelect={(id) => set('editorLineNumbers', id as EditorLineNumbers)}
+        />
+      </Field>
+      <Field icon={Type} title="Display">
+        <ToggleRow
+          label="Soft-wrap long lines"
+          checked={settings.editorWordWrap}
+          onChange={(checked) => set('editorWordWrap', checked)}
+        />
+        <ToggleRow
+          label="Show minimap"
+          checked={settings.editorMinimap}
+          onChange={(checked) => set('editorMinimap', checked)}
+        />
+        <ToggleRow
+          label="Format on save"
+          checked={settings.editorFormatOnSave}
+          onChange={(checked) => set('editorFormatOnSave', checked)}
+        />
+      </Field>
+    </>
+  )
+}
+
+function TerminalSection(): React.JSX.Element {
+  const { settings, set } = useSettings()
+  const scrollbackItems = [
+    { id: '1000', label: '1k lines' },
+    { id: '5000', label: '5k lines' },
+    { id: '10000', label: '10k lines' },
+    { id: '50000', label: '50k lines' }
+  ] as const
+  const cursorStyleItems = [
+    { id: 'block', label: 'Block' },
+    { id: 'underline', label: 'Underline' },
+    { id: 'bar', label: 'Bar' }
+  ] as const
+  const bellItems = [
+    { id: 'none', label: 'Silent' },
+    { id: 'sound', label: 'Sound' }
+  ] as const
+
+  return (
+    <>
+      <PageHeader title="Terminal" subtitle="Tune the in-app terminal panel." />
+      <Field icon={Hash} title="Scrollback" hint="Lines of history kept per session.">
+        <ChoiceGrid
+          columns="grid-cols-2 sm:grid-cols-4"
+          items={scrollbackItems}
+          selectedId={String(settings.terminalScrollback)}
+          onSelect={(id) => set('terminalScrollback', Number(id) as TerminalScrollback)}
+        />
+      </Field>
+      <Field icon={Terminal} title="Cursor">
+        <ChoiceGrid
+          columns="grid-cols-3"
+          items={cursorStyleItems}
+          selectedId={settings.terminalCursorStyle}
+          onSelect={(id) => set('terminalCursorStyle', id as TerminalCursorStyle)}
+        />
+        <ToggleRow
+          label="Blinking cursor"
+          checked={settings.terminalCursorBlink}
+          onChange={(checked) => set('terminalCursorBlink', checked)}
+        />
+      </Field>
+      <Field icon={Bell} title="Bell" hint="Plays a chime when a process rings the bell character.">
+        <ChoiceGrid
+          columns="grid-cols-2"
+          items={bellItems}
+          selectedId={settings.terminalBell}
+          onSelect={(id) => set('terminalBell', id as TerminalBellMode)}
+        />
+      </Field>
+      <Field icon={Copy} title="Clipboard">
+        <ToggleRow
+          label="Copy on select"
+          checked={settings.terminalCopyOnSelect}
+          onChange={(checked) => set('terminalCopyOnSelect', checked)}
+        />
+      </Field>
+    </>
+  )
+}
+
+function SystemSection(): React.JSX.Element {
+  const { settings, set } = useSettings()
+  return (
+    <>
+      <PageHeader title="System" subtitle="How QC Codeus behaves alongside your OS." />
+      <Field
+        icon={AppWindow}
+        title="Startup"
+        hint="Pair with the menu bar icon to keep QC Codeus quietly running."
+      >
+        <ToggleRow
+          label="Launch at login"
+          checked={settings.launchAtLogin}
+          onChange={(checked) => set('launchAtLogin', checked)}
+        />
+        <ToggleRow
+          label="Start minimized"
+          checked={settings.startMinimized}
+          onChange={(checked) => set('startMinimized', checked)}
+        />
+      </Field>
+      <Field
+        icon={Monitor}
+        title="Close behavior"
+        hint="When enabled, closing the window hides it to the menu bar instead of quitting."
+      >
+        <ToggleRow
+          label="Close to menu bar"
+          checked={settings.closeToTray}
+          onChange={(checked) => set('closeToTray', checked)}
+        />
+      </Field>
+    </>
+  )
+}
+
+function PrivacySection(): React.JSX.Element {
+  const clearAllChats = useChatStore((s) => s.clearAllChats)
+  const [confirming, setConfirming] = useState(false)
+  return (
+    <>
+      <PageHeader title="Privacy & data" subtitle="QC Codeus keeps your chats on this Mac." />
+      <Field icon={Shield} title="Telemetry">
+        <p className="max-w-md text-xs leading-relaxed text-muted-foreground">
+          QC Codeus does not collect telemetry or analytics. Prompts you send are streamed to the
+          production proxy, which forwards them to the upstream model — and otherwise stays out of
+          your way.
+        </p>
+      </Field>
+      <Field
+        icon={MessageSquare}
+        title="Chat retention"
+        hint="Chats live in this app's local storage until you delete them."
+      >
+        <p className="max-w-md text-xs leading-relaxed text-muted-foreground">
+          Nothing is synced. Reinstalling the app, switching machines, or clearing application data
+          will remove your chat history.
+        </p>
+      </Field>
+      <Field icon={Trash2} title="Danger zone">
+        {confirming ? (
+          <div className="flex flex-col gap-2">
+            <p className="text-xs text-muted-foreground">
+              This permanently removes every chat. There&apos;s no undo.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={() => {
+                  clearAllChats()
+                  setConfirming(false)
+                }}
+                className="gap-1.5"
+              >
+                <Trash2 className="size-3" />
+                Yes, clear everything
+              </Button>
+              <Button variant="ghost" size="xs" onClick={() => setConfirming(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={() => setConfirming(true)}
+            className="self-start gap-1.5"
+          >
+            <Trash2 className="size-3" />
+            Clear all chats
+          </Button>
+        )}
+      </Field>
+    </>
   )
 }
 

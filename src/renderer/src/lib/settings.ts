@@ -158,6 +158,12 @@ export type ModelId = (typeof MODELS)[number]['id']
 
 export type RuntimeMode = 'local' | 'cloud'
 
+export type EditorTabSize = 2 | 4 | 8
+export type EditorLineNumbers = 'on' | 'off' | 'relative'
+export type TerminalScrollback = 1000 | 5000 | 10000 | 50000
+export type TerminalCursorStyle = 'block' | 'underline' | 'bar'
+export type TerminalBellMode = 'none' | 'sound'
+
 interface Settings {
   permission: PermissionId
   model: ModelId
@@ -170,6 +176,7 @@ interface Settings {
   openSidebarOnLaunch: boolean
   defaultOpenDestination: DefaultOpenDestination
   preventSleepWhileRunning: boolean
+  showTrayIcon: boolean
   suggestedPrompts: boolean
   defaultProjectlessChat: boolean
   completionNotifications: CompletionNotificationMode
@@ -188,6 +195,19 @@ interface Settings {
   codeTheme: CodeTheme
   messageStyle: MessageStyle
   pointerCursors: boolean
+  editorTabSize: EditorTabSize
+  editorWordWrap: boolean
+  editorMinimap: boolean
+  editorLineNumbers: EditorLineNumbers
+  editorFormatOnSave: boolean
+  terminalScrollback: TerminalScrollback
+  terminalCursorStyle: TerminalCursorStyle
+  terminalCursorBlink: boolean
+  terminalCopyOnSelect: boolean
+  terminalBell: TerminalBellMode
+  launchAtLogin: boolean
+  startMinimized: boolean
+  closeToTray: boolean
 }
 
 const DEFAULTS: Settings = {
@@ -202,6 +222,7 @@ const DEFAULTS: Settings = {
   openSidebarOnLaunch: false,
   defaultOpenDestination: 'editor',
   preventSleepWhileRunning: false,
+  showTrayIcon: true,
   suggestedPrompts: true,
   defaultProjectlessChat: false,
   completionNotifications: 'unfocused',
@@ -219,7 +240,20 @@ const DEFAULTS: Settings = {
   fontFamily: 'onest',
   codeTheme: 'github-dark-dimmed',
   messageStyle: 'bubble',
-  pointerCursors: true
+  pointerCursors: true,
+  editorTabSize: 2,
+  editorWordWrap: false,
+  editorMinimap: false,
+  editorLineNumbers: 'on',
+  editorFormatOnSave: false,
+  terminalScrollback: 5000,
+  terminalCursorStyle: 'block',
+  terminalCursorBlink: true,
+  terminalCopyOnSelect: false,
+  terminalBell: 'none',
+  launchAtLogin: false,
+  startMinimized: false,
+  closeToTray: false
 }
 
 const KEY = 'qc-codeus.settings.v1'
@@ -240,6 +274,7 @@ const settingsSchema = z.object({
     .enum(['editor', 'terminal', 'finder'])
     .catch(DEFAULTS.defaultOpenDestination),
   preventSleepWhileRunning: z.boolean().catch(DEFAULTS.preventSleepWhileRunning),
+  showTrayIcon: z.boolean().catch(DEFAULTS.showTrayIcon),
   suggestedPrompts: z.boolean().catch(DEFAULTS.suggestedPrompts),
   defaultProjectlessChat: z.boolean().catch(DEFAULTS.defaultProjectlessChat),
   completionNotifications: z
@@ -261,7 +296,22 @@ const settingsSchema = z.object({
     .enum(['github-dark-dimmed', 'github-dark', 'github-light'])
     .catch(DEFAULTS.codeTheme),
   messageStyle: z.enum(['bubble', 'minimal']).catch(DEFAULTS.messageStyle),
-  pointerCursors: z.boolean().catch(DEFAULTS.pointerCursors)
+  pointerCursors: z.boolean().catch(DEFAULTS.pointerCursors),
+  editorTabSize: z.union([z.literal(2), z.literal(4), z.literal(8)]).catch(DEFAULTS.editorTabSize),
+  editorWordWrap: z.boolean().catch(DEFAULTS.editorWordWrap),
+  editorMinimap: z.boolean().catch(DEFAULTS.editorMinimap),
+  editorLineNumbers: z.enum(['on', 'off', 'relative']).catch(DEFAULTS.editorLineNumbers),
+  editorFormatOnSave: z.boolean().catch(DEFAULTS.editorFormatOnSave),
+  terminalScrollback: z
+    .union([z.literal(1000), z.literal(5000), z.literal(10000), z.literal(50000)])
+    .catch(DEFAULTS.terminalScrollback),
+  terminalCursorStyle: z.enum(['block', 'underline', 'bar']).catch(DEFAULTS.terminalCursorStyle),
+  terminalCursorBlink: z.boolean().catch(DEFAULTS.terminalCursorBlink),
+  terminalCopyOnSelect: z.boolean().catch(DEFAULTS.terminalCopyOnSelect),
+  terminalBell: z.enum(['none', 'sound']).catch(DEFAULTS.terminalBell),
+  launchAtLogin: z.boolean().catch(DEFAULTS.launchAtLogin),
+  startMinimized: z.boolean().catch(DEFAULTS.startMinimized),
+  closeToTray: z.boolean().catch(DEFAULTS.closeToTray)
 })
 
 function read(): Settings {
@@ -277,6 +327,10 @@ function read(): Settings {
 
 let cache: Settings = read()
 const listeners = new Set<(s: Settings) => void>()
+
+export function getSettings(): Settings {
+  return cache
+}
 
 function write(next: Settings): void {
   cache = next

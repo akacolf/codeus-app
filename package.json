@@ -15,7 +15,7 @@
     "dev": "electron-vite dev",
     "build": "npm run typecheck && cross-env NODE_OPTIONS=--max-old-space-size=8192 electron-vite build",
     "postinstall": "electron-builder install-app-deps && bun run scripts/fix-node-pty-perms.ts",
-    "icons": "bun run scripts/build-icon.ts",
+    "icons": "bun run scripts/build-icon.ts && bun run scripts/build-tray-icon.ts",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win --publish never",
     "build:mac": "cross-env NODE_OPTIONS=--max-old-space-size=8192 electron-vite build && electron-builder --mac --publish never",
