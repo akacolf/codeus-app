@@ -49,4 +49,8 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build (electron-vite)
+        env:
+          # Matches the local `bun run build` script — the renderer bundle
+          # (shiki + Monaco + xterm) exceeds Node's default 2 GB heap on CI.
+          NODE_OPTIONS: --max-old-space-size=8192
         run: bun x electron-vite build
