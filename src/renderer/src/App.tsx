@@ -9,6 +9,7 @@ import { Splash } from './components/Splash'
 import { TerminalPanel } from './components/TerminalPanel'
 import { Thread } from './components/Thread'
 import { Toolbar } from './components/Toolbar'
+import { TopupDialog } from './components/TopupDialog'
 import { UpdateBanner } from './components/UpdateBanner'
 import { Workspace } from './components/Workspace'
 import {
@@ -395,6 +396,8 @@ function App(): React.JSX.Element {
       </Dialog>
 
       <GitPanel open={gitOpen} onOpenChange={setGitOpen} />
+
+      <TopupDialog />
 
       <UpdateBanner />
 

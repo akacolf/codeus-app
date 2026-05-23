@@ -25,6 +25,7 @@ import {
 } from '@renderer/components/ui/dropdown-menu'
 import { Kbd } from '@renderer/components/ui/kbd'
 import { shortcutById } from '@renderer/lib/shortcuts'
+import { BalancePill } from './BalancePill'
 import { Logo } from './Logo'
 
 interface ToolbarProps {
@@ -93,6 +94,8 @@ export function Toolbar({
       <ChromeButton label="Open terminal" onClick={onOpenTerminal} disabled={!onOpenTerminal}>
         <Terminal />
       </ChromeButton>
+
+      <BalancePill />
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

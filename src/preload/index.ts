@@ -28,11 +28,21 @@ export type ChatToolEvent =
       durationMs: number
     }
 
+export interface X402Envelope {
+  resource?: string
+  recipient?: string
+  network?: string
+  asset?: string
+  price?: string
+  amountMicros?: number
+}
+
 export interface ChatHandlers {
   onChunk: (delta: string) => void
   onTool: (event: ChatToolEvent) => void
   onDone: () => void
   onError: (message: string) => void
+  onPaymentRequired?: (envelope: X402Envelope) => void
 }
 
 function startChat(params: ChatStartParams, handlers: ChatHandlers): () => void {
@@ -50,12 +60,16 @@ function startChat(params: ChatStartParams, handlers: ChatHandlers): () => void 
   const err = (_e: IpcRendererEvent, p: { requestId: string; message: string }): void => {
     if (p.requestId === requestId) cleanup(() => handlers.onError(p.message))
   }
+  const pay = (_e: IpcRendererEvent, p: { requestId: string; envelope: X402Envelope }): void => {
+    if (p.requestId === requestId) handlers.onPaymentRequired?.(p.envelope)
+  }
 
   const cleanup = (then: () => void): void => {
     ipcRenderer.off('chat:chunk', chunk)
     ipcRenderer.off('chat:tool', toolEvt)
     ipcRenderer.off('chat:done', done)
     ipcRenderer.off('chat:error', err)
+    ipcRenderer.off('chat:payment-required', pay)
     then()
   }
 
@@ -63,6 +77,7 @@ function startChat(params: ChatStartParams, handlers: ChatHandlers): () => void 
   ipcRenderer.on('chat:tool', toolEvt)
   ipcRenderer.on('chat:done', done)
   ipcRenderer.on('chat:error', err)
+  ipcRenderer.on('chat:payment-required', pay)
   ipcRenderer.send('chat:start', params)
 
   return (): void => {
@@ -298,6 +313,28 @@ export interface McpStatePatch {
   selection?: McpSelection | null
 }
 
+export type BalanceResult =
+  | { ok: true; balanceMicros: number; freeCreditMicros: number; walletAddress: string | null }
+  | { ok: false; error: string }
+
+export type TopupQuoteResult =
+  | {
+      ok: true
+      amountMicros: number
+      recipient: string
+      network: 'base'
+      asset: 'USDC'
+      paymentUrl: string
+      expiresAt: string
+    }
+  | { ok: false; error: string }
+
+const billingBridge = {
+  getBalance: (): Promise<BalanceResult> => ipcRenderer.invoke('billing:getBalance'),
+  requestTopup: (amountMicros: number): Promise<TopupQuoteResult> =>
+    ipcRenderer.invoke('billing:requestTopup', { amountMicros })
+}
+
 const mcpBridge = {
   getInfo: (): Promise<McpInfo | null> => ipcRenderer.invoke('mcp:getInfo'),
   updateState: (patch: McpStatePatch): Promise<{ ok: true } | { ok: false; error: string }> =>
@@ -355,7 +392,8 @@ const api = {
   project: projectBridge,
   git: gitBridge,
   sandbox: sandboxBridge,
-  mcp: mcpBridge
+  mcp: mcpBridge,
+  billing: billingBridge
 }
 
 export type Api = typeof api

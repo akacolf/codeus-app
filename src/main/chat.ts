@@ -4,7 +4,20 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { promises as fs } from 'fs'
 import { posix, relative, resolve, sep } from 'path'
 import { z } from 'zod'
+import { getAccountId, getClientToken } from './identity'
 import { getActiveProjectCwd } from './project'
+
+// x402 envelope shape the proxy returns on 402. We don't validate it strictly
+// here — the renderer just needs enough to prompt for a top-up — but the
+// canonical fields are documented for the proxy author.
+interface X402Envelope {
+  resource?: string
+  recipient?: string
+  network?: string
+  asset?: string
+  price?: string
+  amountMicros?: number
+}
 
 const StartParamsSchema = z.object({
   requestId: z.string().min(1),
@@ -36,9 +49,6 @@ const MODEL_MAP: Record<string, string> = {
 }
 
 const QC_PROXY_BASE_URL = process.env.QC_PROXY_BASE_URL || 'https://api.quantumclub.sh/v1'
-
-const QC_CLIENT_TOKEN =
-  process.env.QC_CLIENT_TOKEN || '08606d51e72936e8dc17d6dcd0481d2a5a0d97b0c825851b5189b2b95be91c06'
 
 const MAX_TOOL_STEPS = 10
 const MAX_FILE_BYTES = 1_000_000 // 1MB cap for tool reads
@@ -140,11 +150,32 @@ async function runStream(wc: WebContents, params: StartParams): Promise<void> {
   const controller = new AbortController()
   inFlight.set(requestId, controller)
 
+  // Custom fetch wraps every upstream call so we can (a) attach the per-install
+  // account id the proxy uses to debit balance, and (b) catch 402 Payment
+  // Required and surface the x402 envelope to the renderer so it can pop the
+  // top-up dialog. The QC_CLIENT_TOKEN bearer continues to identify Codeus
+  // itself to the proxy.
+  const authFetch: typeof fetch = async (input, init) => {
+    const headers = new Headers(init?.headers)
+    headers.set('X-QC-Account', getAccountId())
+    const res = await fetch(input, { ...init, headers })
+    if (res.status === 402) {
+      try {
+        const envelope = (await res.clone().json()) as X402Envelope
+        send(wc, 'chat:payment-required', { requestId, envelope })
+      } catch {
+        send(wc, 'chat:payment-required', { requestId, envelope: {} satisfies X402Envelope })
+      }
+    }
+    return res
+  }
+
   try {
     const provider = createOpenAICompatible({
       name: 'qc',
       baseURL: QC_PROXY_BASE_URL,
-      apiKey: QC_CLIENT_TOKEN
+      apiKey: getClientToken(),
+      fetch: authFetch
     })
     const modelId = MODEL_MAP[model] ?? MODEL_MAP['sonnet-4.6']
 

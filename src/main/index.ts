@@ -5,6 +5,7 @@ import { userInfo } from 'os'
 import { join, resolve } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { registerBillingIpc } from './billing'
 import { registerChatIpc } from './chat'
 import { registerFsIpc } from './fs'
 import { registerGitIpc } from './git'
@@ -325,6 +326,7 @@ app.whenReady().then(() => {
   createTray(trayDeps)
   registerProjectIpc()
   registerChatIpc()
+  registerBillingIpc()
   registerFsIpc(projectCwd)
   registerTerminalIpc(projectCwd)
   registerGitIpc(projectCwd)

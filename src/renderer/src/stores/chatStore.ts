@@ -4,6 +4,7 @@ import type { Chat, Message, MessagePart, View } from '../lib/chat'
 import { deriveTitle, genId, loadChats, saveChats } from '../lib/chat'
 import type { InferenceSpeed, ModelId, WorkMode } from '../lib/settings'
 import { recordChars, recordRequest } from '../lib/usage'
+import { useBillingStore } from './billingStore'
 
 export interface ChatSettingsSnapshot {
   model: ModelId
@@ -530,7 +531,14 @@ function startAssistantStream(
         }
       },
       onDone: () => finish(),
-      onError: (m) => finish(m)
+      onError: (m) => finish(m),
+      onPaymentRequired: (envelope) => {
+        // Proxy returned 402: pop the top-up dialog with the suggested amount
+        // preselected. The stream still errors out shortly after — that's fine,
+        // the user retries once their balance refills.
+        useBillingStore.getState().openTopup(envelope)
+        void useBillingStore.getState().refresh()
+      }
     }
   )
   cancelByChatId.set(chatId, cancel)
