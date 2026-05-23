@@ -16,6 +16,7 @@ import { cn } from '@renderer/lib/utils'
 import type { Chat } from '@renderer/lib/chat'
 import { UNGROUPED, groupChatsByProject } from '@renderer/lib/projects'
 import { useChatStore } from '@renderer/stores/chatStore'
+import { useAuthStore } from '@renderer/stores/authStore'
 import { sidebarWidthById, useSettings, type SidebarWidth } from '@renderer/lib/settings'
 import {
   DropdownMenu,
@@ -76,12 +77,17 @@ export function Sidebar({
   const renameChat = useChatStore((s) => s.renameChat)
   const deleteChat = useChatStore((s) => s.deleteChat)
   const { settings } = useSettings()
+  const authState = useAuthStore((s) => s.state)
+  const accountEmail = authState.kind === 'signed-in' ? authState.email : null
 
   useEffect(() => {
     void window.api.osUserName().then(setOsName)
   }, [])
 
-  const accountName = settings.userName.trim() || osName || 'Researcher'
+  // Identity is driven by the linked QC account when signed in: the email is
+  // the source of truth, with a settings/OS name only as a pre-auth fallback.
+  const emailLocal = accountEmail ? accountEmail.split('@')[0] : ''
+  const accountName = settings.userName.trim() || emailLocal || osName || 'Researcher'
   const avatarChar = accountName.charAt(0).toUpperCase() || 'Q'
 
   const toggle = (key: string): void => setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }))
@@ -108,6 +114,11 @@ export function Sidebar({
       <div
         aria-hidden
         onClick={onClose}
+        // While open, mark the backdrop no-drag so it overrides the toolbar's
+        // macOS `-webkit-app-region: drag` strip — otherwise a click on the top
+        // 40px is consumed as a window-drag and never closes the sidebar.
+        // Only when open, so the toolbar stays draggable the rest of the time.
+        style={open ? ({ WebkitAppRegion: 'no-drag' } as React.CSSProperties) : undefined}
         className={cn(
           'absolute inset-0 z-30 bg-black/40 transition-opacity duration-200',
           open ? 'opacity-100' : 'pointer-events-none opacity-0'
@@ -202,7 +213,9 @@ export function Sidebar({
           </div>
           <div className="flex min-w-0 flex-1 flex-col leading-tight">
             <span className="truncate text-sm">{accountName}</span>
-            <span className="text-xs text-muted-foreground">Research preview</span>
+            <span className="truncate text-xs text-muted-foreground">
+              {accountEmail ?? 'Research preview'}
+            </span>
           </div>
         </div>
       </aside>

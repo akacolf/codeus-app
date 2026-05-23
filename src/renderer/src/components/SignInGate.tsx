@@ -147,10 +147,7 @@ function AwaitingBrowser({
       className="flex w-full max-w-md flex-col items-center gap-8 px-6 text-center"
       style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
     >
-      <div className="relative size-24">
-        <div className="absolute inset-0 animate-pulse rounded-full bg-foreground/10 blur-xl" />
-        <Logo className="relative size-24" aria-hidden="true" />
-      </div>
+      <Logo className="size-24" aria-hidden="true" />
       <div className="space-y-2">
         <h1 className="text-xl font-medium tracking-tight">
           Continue signing in with your browser
