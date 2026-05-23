@@ -7,16 +7,25 @@ import { z } from 'zod'
 import { getAccountId, getClientToken } from './identity'
 import { getActiveProjectCwd } from './project'
 
-// x402 envelope shape the proxy returns on 402. We don't validate it strictly
-// here — the renderer just needs enough to prompt for a top-up — but the
-// canonical fields are documented for the proxy author.
+// x402 v2 payment requirements the proxy returns on 402. We don't validate
+// them strictly here; the renderer just needs enough to prompt for a top-up.
 interface X402Envelope {
-  resource?: string
-  recipient?: string
-  network?: string
-  asset?: string
-  price?: string
+  x402Version?: 2
+  error?: string
+  accepts?: Array<{
+    scheme?: 'exact' | string
+    resource?: string
+    network?: 'eip155:8453' | string
+    asset?: string
+    amount?: string
+    payTo?: string
+    price?: string
+    maxTimeoutSeconds?: number
+    description?: string
+    mimeType?: string
+  }>
   amountMicros?: number
+  paymentUrl?: string
 }
 
 const StartParamsSchema = z.object({
@@ -58,6 +67,16 @@ const inFlight = new Map<string, AbortController>()
 
 function send(wc: WebContents, channel: string, payload: unknown): void {
   if (!wc.isDestroyed()) wc.send(channel, payload)
+}
+
+function readPaymentRequired(res: Response): X402Envelope | null {
+  const encoded = res.headers.get('PAYMENT-REQUIRED')
+  if (!encoded) return null
+  try {
+    return JSON.parse(Buffer.from(encoded, 'base64').toString('utf8')) as X402Envelope
+  } catch {
+    return null
+  }
 }
 
 export type ToolStatus = 'running' | 'done' | 'error'
@@ -152,8 +171,8 @@ async function runStream(wc: WebContents, params: StartParams): Promise<void> {
 
   // Custom fetch wraps every upstream call so we can (a) attach the per-install
   // account id the proxy uses to debit balance, and (b) catch 402 Payment
-  // Required and surface the x402 envelope to the renderer so it can pop the
-  // top-up dialog. The QC_CLIENT_TOKEN bearer continues to identify Codeus
+  // Required and surface the x402 payment requirements to the renderer so it
+  // can pop the top-up dialog. The QC_CLIENT_TOKEN bearer continues to identify Codeus
   // itself to the proxy.
   const authFetch: typeof fetch = async (input, init) => {
     const headers = new Headers(init?.headers)
@@ -161,7 +180,7 @@ async function runStream(wc: WebContents, params: StartParams): Promise<void> {
     const res = await fetch(input, { ...init, headers })
     if (res.status === 402) {
       try {
-        const envelope = (await res.clone().json()) as X402Envelope
+        const envelope = readPaymentRequired(res) ?? ((await res.clone().json()) as X402Envelope)
         send(wc, 'chat:payment-required', { requestId, envelope })
       } catch {
         send(wc, 'chat:payment-required', { requestId, envelope: {} satisfies X402Envelope })

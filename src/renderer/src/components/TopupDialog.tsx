@@ -151,7 +151,7 @@ export function TopupDialog(): React.JSX.Element {
 
           <p className="text-[11px] leading-relaxed text-muted-foreground">
             QC Codeus charges per request based on model usage. Stripe payments are coming after we
-            close incorporation &mdash; until then, crypto top-ups via x402 are the way in.
+            close incorporation &mdash; until then, USDC top-ups on Base are the way in.
           </p>
         </div>
       </DialogContent>

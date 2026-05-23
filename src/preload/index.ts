@@ -29,12 +29,24 @@ export type ChatToolEvent =
     }
 
 export interface X402Envelope {
-  resource?: string
-  recipient?: string
-  network?: string
+  x402Version?: 2
+  error?: string
+  accepts?: Array<{
+    scheme?: 'exact' | string
+    resource?: string
+    network?: 'eip155:8453' | string
+    asset?: string
+    amount?: string
+    payTo?: string
+    price?: string
+    maxTimeoutSeconds?: number
+    description?: string
+    mimeType?: string
+  }>
   asset?: string
   price?: string
   amountMicros?: number
+  paymentUrl?: string
 }
 
 export interface ChatHandlers {
@@ -322,7 +334,7 @@ export type TopupQuoteResult =
       ok: true
       amountMicros: number
       recipient: string
-      network: 'base'
+      network: 'eip155:8453'
       asset: 'USDC'
       paymentUrl: string
       expiresAt: string

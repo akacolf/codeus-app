@@ -14,11 +14,11 @@ const BalanceResponseSchema = z.object({
 })
 
 const TopupQuoteResponseSchema = z.object({
-  // x402 envelope the client retries against — produced by the proxy's
-  // /topup/quote, then settled after the Base USDC transfer verifies.
+  // x402 v2 payment requirement returned by /topup/quote, then settled after
+  // the Base USDC transfer verifies.
   amountMicros: z.number().int().positive(),
   recipient: z.string(),
-  network: z.literal('base'),
+  network: z.literal('eip155:8453'),
   asset: z.literal('USDC'),
   // Browser link the renderer opens externally. The proxy decides the format.
   paymentUrl: z.string().url(),
@@ -34,7 +34,7 @@ export type TopupQuoteResult =
       ok: true
       amountMicros: number
       recipient: string
-      network: 'base'
+      network: 'eip155:8453'
       asset: 'USDC'
       paymentUrl: string
       expiresAt: string
