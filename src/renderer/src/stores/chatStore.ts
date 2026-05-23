@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
-import type { Chat, Message, MessagePart, View } from '../lib/chat'
+import type { Chat, CommandApproval, Message, MessagePart, View } from '../lib/chat'
 import { deriveTitle, genId, loadChats, saveChats } from '../lib/chat'
 import type { InferenceSpeed, ModelId, WorkMode } from '../lib/settings'
 import { recordChars, recordRequest } from '../lib/usage'
@@ -51,6 +51,11 @@ interface ChatStore {
   regenerate: (chatId: string, assistantMessageId: string, settings: ChatSettingsSnapshot) => void
   retryAfterError: (chatId: string, settings: ChatSettingsSnapshot) => void
   stopStreaming: (chatId?: string) => void
+  respondToCommandApproval: (
+    chatId: string,
+    approvalId: string,
+    decision: { approved: boolean; remember?: boolean; instruction?: string }
+  ) => void
 }
 
 // One cancel handle per chat — concurrent streams in the same chat are not allowed;
@@ -172,6 +177,22 @@ export const useChatStore = create<ChatStore>()(
       })
     },
 
+    respondToCommandApproval: (chatId, approvalId, decision) => {
+      window.api.chat.respondToCommandApproval({ approvalId, ...decision })
+      set((s) => ({
+        chats: s.chats.map((c) =>
+          c.id === chatId
+            ? {
+                ...c,
+                commandApprovals: (c.commandApprovals ?? []).filter(
+                  (a) => a.approvalId !== approvalId
+                )
+              }
+            : c
+        )
+      }))
+    },
+
     sendMessage: (text, settings) => {
       const trimmed = text.trim()
       if (!trimmed) return
@@ -203,7 +224,13 @@ export const useChatStore = create<ChatStore>()(
         set({
           chats: chats.map((c) =>
             c.id === chatId
-              ? { ...c, messages: nextHistory, error: undefined, streamingMessageId: undefined }
+              ? {
+                  ...c,
+                  messages: nextHistory,
+                  error: undefined,
+                  streamingMessageId: undefined,
+                  commandApprovals: undefined
+                }
               : c
           )
         })
@@ -245,7 +272,13 @@ export const useChatStore = create<ChatStore>()(
       set({
         chats: chats.map((c) =>
           c.id === chatId
-            ? { ...c, messages: truncated, error: undefined, streamingMessageId: undefined }
+            ? {
+                ...c,
+                messages: truncated,
+                error: undefined,
+                streamingMessageId: undefined,
+                commandApprovals: undefined
+              }
             : c
         )
       })
@@ -263,7 +296,13 @@ export const useChatStore = create<ChatStore>()(
       set({
         chats: chats.map((c) =>
           c.id === chatId
-            ? { ...c, messages: truncated, error: undefined, streamingMessageId: undefined }
+            ? {
+                ...c,
+                messages: truncated,
+                error: undefined,
+                streamingMessageId: undefined,
+                commandApprovals: undefined
+              }
             : c
         )
       })
@@ -276,7 +315,9 @@ export const useChatStore = create<ChatStore>()(
       const chat = chats.find((c) => c.id === chatId)
       if (!chat || !chat.error) return
       set({
-        chats: chats.map((c) => (c.id === chatId ? { ...c, error: undefined } : c))
+        chats: chats.map((c) =>
+          c.id === chatId ? { ...c, error: undefined, commandApprovals: undefined } : c
+        )
       })
       startAssistantStream(chatId, chat.messages, settings)
     },
@@ -433,6 +474,17 @@ function startAssistantStream(
     })
   }
 
+  const onCommandApproval = (approval: CommandApproval): void => {
+    useChatStore.setState((s) => ({
+      chats: s.chats.map((c) => {
+        if (c.id !== chatId) return c
+        const existing = c.commandApprovals ?? []
+        if (existing.some((a) => a.approvalId === approval.approvalId)) return c
+        return { ...c, commandApprovals: [...existing, approval] }
+      })
+    }))
+  }
+
   const finish = (errorMessage?: string): void => {
     // Only clear the handle if it's still pointing at this stream — a follow-up
     // send might have already installed a new one.
@@ -468,8 +520,15 @@ function startAssistantStream(
     useChatStore.setState((s) => ({
       chats: s.chats.map((c) => {
         if (c.id !== chatId) return c
-        const next: Chat = { ...c, streamingMessageId: undefined }
-        // Any tool still 'running' when the stream ends was interrupted —
+        // If a newer stream has already taken over this chat, leave its
+        // streamingMessageId / commandApprovals untouched — but still
+        // close out our own assistant message's running tools so the chip
+        // doesn't spin forever.
+        const isStillOurStream = c.streamingMessageId === assistantId
+        const next: Chat = isStillOurStream
+          ? { ...c, streamingMessageId: undefined, commandApprovals: undefined }
+          : { ...c }
+        // Any tool still 'running' when this stream ends was interrupted —
         // mark it as errored so the UI doesn't keep spinning.
         next.messages = c.messages.map((m) => {
           if (m.id !== assistantId || !m.parts) return m
@@ -484,8 +543,10 @@ function startAssistantStream(
           }
         })
         if (errorMessage) {
-          // Don't surface user-initiated cancellations as errors.
-          if (errorMessage !== 'cancelled') next.error = errorMessage
+          // Only surface a chat-level error if we're still the active stream —
+          // otherwise the newer turn already cleared `error` and we'd resurrect
+          // a stale failure.
+          if (errorMessage !== 'cancelled' && isStillOurStream) next.error = errorMessage
           // Drop an empty assistant placeholder that produced neither text nor tool calls.
           next.messages = next.messages.filter(
             (m) =>
@@ -499,6 +560,35 @@ function startAssistantStream(
         return next
       })
     }))
+  }
+
+  const MAX_LIVE_OUTPUT = 60_000
+
+  const onToolProgress = (e: {
+    toolCallId: string
+    stream: 'stdout' | 'stderr'
+    chunk: string
+    truncated?: boolean
+  }): void => {
+    mutateMessage((m) => {
+      const parts = m.parts ?? []
+      return {
+        ...m,
+        parts: parts.map((p) => {
+          if (p.kind !== 'tool' || p.toolCallId !== e.toolCallId) return p
+          const field = e.stream === 'stdout' ? 'stdoutLive' : 'stderrLive'
+          const prev = p[field] ?? ''
+          // Cap live output to avoid ballooning renderer memory.
+          const next = (prev + e.chunk).slice(-MAX_LIVE_OUTPUT)
+          return {
+            ...p,
+            [field]: next,
+            truncatedLive:
+              p.truncatedLive || e.truncated || prev.length + e.chunk.length > MAX_LIVE_OUTPUT
+          }
+        })
+      }
+    })
   }
 
   recordRequest()
@@ -520,6 +610,13 @@ function startAssistantStream(
             args: e.args,
             startedAt: e.startedAt
           })
+        } else if (e.kind === 'progress') {
+          onToolProgress({
+            toolCallId: e.toolCallId,
+            stream: e.stream,
+            chunk: e.chunk,
+            truncated: e.truncated
+          })
         } else {
           onToolEnd({
             toolCallId: e.toolCallId,
@@ -530,6 +627,7 @@ function startAssistantStream(
           })
         }
       },
+      onCommandApproval,
       onDone: () => finish(),
       onError: (m) => finish(m),
       onPaymentRequired: (envelope) => {

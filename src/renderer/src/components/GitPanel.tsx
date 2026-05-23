@@ -5,12 +5,15 @@ import {
   Check,
   ChevronDown,
   CircleAlert,
+  FolderGit2,
   GitBranch,
+  GitBranchPlus,
   Loader2,
   Plus,
   RefreshCw,
   Upload
 } from 'lucide-react'
+import { toast } from 'sonner'
 import {
   Dialog,
   DialogContent,
@@ -29,37 +32,50 @@ import {
   DropdownMenuTrigger
 } from '@renderer/components/ui/dropdown-menu'
 import { cn } from '@renderer/lib/utils'
-import type { GitStatus, GitFileChange } from '../../../preload/index'
+import type { GitStatus, GitFileChange, GitWorktree } from '../../../preload/index'
 
 interface GitPanelProps {
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
-type Busy = null | 'refresh' | 'checkout' | 'create' | 'commit' | 'push' | 'pull'
+type Busy = null | 'refresh' | 'checkout' | 'create' | 'worktree' | 'commit' | 'push' | 'pull'
 
 export function GitPanel({ open, onOpenChange }: GitPanelProps): React.JSX.Element {
   const [status, setStatus] = useState<GitStatus | null>(null)
   const [branchList, setBranchList] = useState<string[]>([])
+  const [worktrees, setWorktrees] = useState<GitWorktree[]>([])
   const [message, setMessage] = useState('')
   const [newBranch, setNewBranch] = useState('')
+  const [worktreePath, setWorktreePath] = useState('')
+  const [worktreeBranch, setWorktreeBranch] = useState('')
   const [creatingBranch, setCreatingBranch] = useState(false)
+  const [creatingWorktree, setCreatingWorktree] = useState(false)
   const [busy, setBusy] = useState<Busy>(null)
   const [error, setError] = useState<string | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
 
   const flashToast = (msg: string): void => {
-    setToast(msg)
-    window.setTimeout(() => setToast(null), 2500)
+    toast.success(msg)
+  }
+
+  const showError = (msg: string): void => {
+    setError(msg)
+    toast.error('Source control failed', { description: msg })
   }
 
   const refresh = useCallback(async (): Promise<void> => {
     setBusy('refresh')
     setError(null)
-    const [s, b] = await Promise.all([window.api.git.status(), window.api.git.branches()])
+    const [s, b, w] = await Promise.all([
+      window.api.git.status(),
+      window.api.git.branches(),
+      window.api.git.worktrees()
+    ])
     setStatus(s)
     if (b.ok) setBranchList(b.data.all)
     else setBranchList([])
+    if (w.ok) setWorktrees(w.data.worktrees)
+    else setWorktrees([])
     setBusy(null)
   }, [])
 
@@ -88,7 +104,7 @@ export function GitPanel({ open, onOpenChange }: GitPanelProps): React.JSX.Eleme
     setBusy('checkout')
     setError(null)
     const r = await window.api.git.checkout(name)
-    if (!r.ok) setError(r.error)
+    if (!r.ok) showError(r.error)
     else flashToast(`Switched to ${name}`)
     await refresh()
   }
@@ -99,12 +115,48 @@ export function GitPanel({ open, onOpenChange }: GitPanelProps): React.JSX.Eleme
     setBusy('create')
     setError(null)
     const r = await window.api.git.createBranch(name)
-    if (!r.ok) setError(r.error)
+    if (!r.ok) showError(r.error)
     else {
       flashToast(`Created and switched to ${name}`)
       setNewBranch('')
       setCreatingBranch(false)
     }
+    await refresh()
+  }
+
+  const handleCreateWorktree = async (): Promise<void> => {
+    const path = worktreePath.trim()
+    const branch = worktreeBranch.trim()
+    if (!path || !branch) return
+    setBusy('worktree')
+    setError(null)
+    const r = await window.api.git.createWorktree({ path, branch })
+    if (!r.ok) {
+      showError(r.error)
+      setBusy(null)
+      return
+    }
+    setWorktrees(r.data.worktrees)
+    setWorktreePath('')
+    setWorktreeBranch('')
+    setCreatingWorktree(false)
+    flashToast(`Created worktree ${branch}`)
+    const switched = await window.api.project.setCwd(r.data.path)
+    if (!switched.ok) {
+      showError(`Created worktree, but could not open it: ${switched.error}`)
+      setBusy(null)
+      return
+    }
+    await refresh()
+  }
+
+  const handleOpenWorktree = async (path: string): Promise<void> => {
+    const r = await window.api.project.setCwd(path)
+    if (!r.ok) {
+      showError(r.error)
+      return
+    }
+    flashToast(`Opened ${basename(path)}`)
     await refresh()
   }
 
@@ -114,7 +166,7 @@ export function GitPanel({ open, onOpenChange }: GitPanelProps): React.JSX.Eleme
     setError(null)
     const r = await window.api.git.commit(message.trim(), true)
     if (!r.ok) {
-      setError(r.error)
+      showError(r.error)
       setBusy(null)
       return
     }
@@ -124,7 +176,7 @@ export function GitPanel({ open, onOpenChange }: GitPanelProps): React.JSX.Eleme
       setBusy('push')
       const upstream = status?.isRepo ? status.upstream : null
       const p = await window.api.git.push({ setUpstream: !upstream })
-      if (!p.ok) setError(p.error)
+      if (!p.ok) showError(p.error)
       else flashToast('Pushed')
     }
     await refresh()
@@ -135,7 +187,7 @@ export function GitPanel({ open, onOpenChange }: GitPanelProps): React.JSX.Eleme
     setBusy('push')
     setError(null)
     const r = await window.api.git.push({ setUpstream: !status.upstream })
-    if (!r.ok) setError(r.error)
+    if (!r.ok) showError(r.error)
     else flashToast(status.upstream ? 'Pushed' : 'Pushed and set upstream')
     await refresh()
   }
@@ -144,9 +196,19 @@ export function GitPanel({ open, onOpenChange }: GitPanelProps): React.JSX.Eleme
     setBusy('pull')
     setError(null)
     const r = await window.api.git.pull()
-    if (!r.ok) setError(r.error)
+    if (!r.ok) showError(r.error)
     else flashToast('Pulled')
     await refresh()
+  }
+
+  const openWorktreeForm = (): void => {
+    const currentPath = worktrees.find((w) => w.current)?.path
+    const branchBase = slugify(status?.isRepo ? status.branch : null)
+    const branch = branchBase ? `codex/${branchBase}-worktree` : 'codex/new-worktree'
+    setCreatingWorktree(true)
+    if (!worktreeBranch.trim()) setWorktreeBranch(branch)
+    if (!worktreePath.trim() && currentPath)
+      setWorktreePath(`../${basename(currentPath)}-${branchBase || 'worktree'}`)
   }
 
   return (
@@ -308,6 +370,108 @@ export function GitPanel({ open, onOpenChange }: GitPanelProps): React.JSX.Eleme
               </div>
             )}
 
+            <div className="flex flex-col gap-2 rounded-lg bg-foreground/5 p-3">
+              <div className="flex items-center gap-2">
+                <FolderGit2 className="size-3.5 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-medium">Worktrees</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    Create an isolated checkout without leaving this repo.
+                  </div>
+                </div>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  disabled={busy !== null}
+                  onClick={openWorktreeForm}
+                  className="gap-1.5"
+                >
+                  <GitBranchPlus className="size-3" />
+                  New
+                </Button>
+              </div>
+
+              {worktrees.length > 0 && (
+                <ul className="flex max-h-28 flex-col overflow-y-auto">
+                  {worktrees.map((w) => (
+                    <li
+                      key={w.path}
+                      className="flex items-center gap-2 rounded px-1 py-1 text-xs text-foreground/85"
+                    >
+                      <GitBranch className="size-3 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 flex-1 truncate font-mono">
+                        {basename(w.path)}
+                        <span className="ml-1 text-muted-foreground">
+                          {w.branch ?? (w.detached ? 'detached' : 'no branch')}
+                        </span>
+                      </span>
+                      {w.current ? (
+                        <span className="rounded-full bg-foreground/10 px-1.5 py-0.5 text-[10px]">
+                          current
+                        </span>
+                      ) : (
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          disabled={busy !== null}
+                          onClick={() => void handleOpenWorktree(w.path)}
+                        >
+                          Open
+                        </Button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {creatingWorktree && (
+                <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto_auto]">
+                  <Input
+                    value={worktreePath}
+                    onChange={(e) => setWorktreePath(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void handleCreateWorktree()
+                      if (e.key === 'Escape') {
+                        setCreatingWorktree(false)
+                        setWorktreePath('')
+                        setWorktreeBranch('')
+                      }
+                    }}
+                    placeholder="../repo-feature"
+                    autoFocus
+                    className="h-8 text-xs"
+                  />
+                  <Input
+                    value={worktreeBranch}
+                    onChange={(e) => setWorktreeBranch(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void handleCreateWorktree()
+                    }}
+                    placeholder="codex/new-feature"
+                    className="h-8 text-xs"
+                  />
+                  <Button
+                    size="xs"
+                    onClick={() => void handleCreateWorktree()}
+                    disabled={!worktreePath.trim() || !worktreeBranch.trim() || busy !== null}
+                  >
+                    Create
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => {
+                      setCreatingWorktree(false)
+                      setWorktreePath('')
+                      setWorktreeBranch('')
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              )}
+            </div>
+
             {/* Changes */}
             <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -393,11 +557,6 @@ export function GitPanel({ open, onOpenChange }: GitPanelProps): React.JSX.Eleme
                 <pre className="whitespace-pre-wrap font-sans">{error}</pre>
               </div>
             )}
-            {toast && (
-              <div className="rounded-lg bg-foreground/12 px-3 py-2 text-xs text-foreground/90">
-                {toast}
-              </div>
-            )}
           </div>
         )}
       </DialogContent>
@@ -425,6 +584,21 @@ function FileRow({ change }: { change: GitFileChange }): React.JSX.Element {
       <span className="truncate font-mono text-foreground/85">{change.path}</span>
     </li>
   )
+}
+
+function basename(path: string): string {
+  const trimmed = path.replace(/[/\\]+$/, '')
+  const idx = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'))
+  return idx === -1 ? trimmed : trimmed.slice(idx + 1)
+}
+
+function slugify(value: string | null | undefined): string {
+  return (value ?? '')
+    .replace(/^refs\/heads\//, '')
+    .replace(/[^A-Za-z0-9._/-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/\/+$/g, '')
+    .toLowerCase()
 }
 
 function labelFor(code: string): string {

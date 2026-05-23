@@ -5,6 +5,7 @@ import { userInfo } from 'os'
 import { join, resolve } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { handleAuthCallbackUrl, initAuth, registerAuthIpc, syncAuthStateToWindow } from './auth'
 import { registerBillingIpc } from './billing'
 import { registerChatIpc } from './chat'
 import { registerFsIpc } from './fs'
@@ -264,6 +265,10 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
+  // Push the current auth state down once the renderer is ready so the
+  // SignInGate has a definitive answer on first paint (no "unknown" flash).
+  syncAuthStateToWindow(mainWindow)
+
   // HMR for renderer base on electron-vite cli.
   // Load the remote URL for development or the local html file for production.
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -271,6 +276,47 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+}
+
+// Register the custom protocol so OS-handed deeplinks come back to us.
+// On Win/Linux, dev mode needs the executable + script paths so the OS knows
+// what to invoke; packaged builds use the registered exe automatically.
+function registerCustomProtocol(): void {
+  if (process.defaultApp) {
+    if (process.argv.length >= 2) {
+      app.setAsDefaultProtocolClient('qc-codeus', process.execPath, [resolve(process.argv[1])])
+    }
+  } else {
+    app.setAsDefaultProtocolClient('qc-codeus')
+  }
+}
+
+function deeplinkFromArgv(argv: string[]): string | null {
+  return argv.find((a) => a.startsWith('qc-codeus://')) ?? null
+}
+
+// Single-instance: a second launch with a deeplink forwards it into the
+// already-running app rather than spawning a duplicate window.
+const gotLock = app.requestSingleInstanceLock()
+if (!gotLock) {
+  app.quit()
+} else {
+  app.on('second-instance', (_event, argv) => {
+    const win = getMainWindow()
+    if (win) {
+      if (win.isMinimized()) win.restore()
+      win.focus()
+    }
+    const url = deeplinkFromArgv(argv)
+    if (url) handleAuthCallbackUrl(url)
+  })
+  // macOS delivers deeplinks through the dedicated open-url event instead of
+  // argv. Cover both paths.
+  app.on('open-url', (event, url) => {
+    event.preventDefault()
+    handleAuthCallbackUrl(url)
+  })
+  registerCustomProtocol()
 }
 
 // This method will be called when Electron has finished
@@ -325,6 +371,8 @@ app.whenReady().then(() => {
   // once it mounts (a brief flicker is acceptable vs. a delayed appearance).
   createTray(trayDeps)
   registerProjectIpc()
+  registerAuthIpc()
+  void initAuth()
   registerChatIpc()
   registerBillingIpc()
   registerFsIpc(projectCwd)
@@ -348,6 +396,12 @@ app.whenReady().then(() => {
     // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+
+  // Handle the case where Windows launched us via a deeplink — the URL is in
+  // argv at startup, not delivered as a second-instance event. macOS arrives
+  // through open-url which already fires.
+  const initialDeeplink = deeplinkFromArgv(process.argv)
+  if (initialDeeplink) handleAuthCallbackUrl(initialDeeplink)
 })
 
 // Quit when all windows are closed, except on macOS. There, it's common

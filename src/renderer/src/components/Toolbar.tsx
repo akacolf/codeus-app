@@ -5,6 +5,7 @@ import {
   Code,
   Info,
   Keyboard,
+  LogOut,
   PanelLeft,
   PanelLeftOpen,
   RefreshCw,
@@ -14,6 +15,7 @@ import {
 } from 'lucide-react'
 import { useTranslations } from 'use-intl'
 import { cn } from '@renderer/lib/utils'
+import { useAuthStore } from '@renderer/stores/authStore'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,6 +60,10 @@ export function Toolbar({
   onOpenAbout
 }: ToolbarProps): React.JSX.Element {
   const t = useTranslations('toolbar')
+  const authState = useAuthStore((s) => s.state)
+  const signOut = useAuthStore((s) => s.signOut)
+  const signedIn = authState.kind === 'signed-in'
+  const email = signedIn ? authState.email : null
   const ToggleIcon = sidebarOpen ? PanelLeftOpen : PanelLeft
   return (
     <div
@@ -110,7 +116,17 @@ export function Toolbar({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" sideOffset={6} className="w-64">
-          <DropdownMenuLabel className="text-muted-foreground">QC Codeus</DropdownMenuLabel>
+          {email ? (
+            <>
+              <DropdownMenuLabel className="text-muted-foreground">Signed in as</DropdownMenuLabel>
+              <DropdownMenuLabel className="-mt-1.5 truncate font-normal text-foreground">
+                {email}
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+            </>
+          ) : (
+            <DropdownMenuLabel className="text-muted-foreground">QC Codeus</DropdownMenuLabel>
+          )}
 
           <DropdownMenuItem onSelect={() => onOpenShortcuts?.()} disabled={!onOpenShortcuts}>
             <Keyboard />
@@ -133,6 +149,16 @@ export function Toolbar({
             <Info />
             <span>About QC Codeus</span>
           </DropdownMenuItem>
+
+          {signedIn ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => void signOut()}>
+                <LogOut />
+                <span>Sign out</span>
+              </DropdownMenuItem>
+            </>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

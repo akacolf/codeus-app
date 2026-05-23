@@ -1,5 +1,7 @@
 import { ipcMain } from 'electron'
 import { spawn, spawnSync } from 'child_process'
+import { dirname, isAbsolute, resolve } from 'path'
+import { z } from 'zod'
 
 export interface GitFileChange {
   path: string
@@ -22,7 +24,32 @@ export interface GitStatus {
 
 export type GitStatusResult = GitStatus | { isRepo: false }
 
+export interface GitWorktree {
+  path: string
+  branch: string | null
+  head: string | null
+  detached: boolean
+  bare: boolean
+  current: boolean
+}
+
 type Result<T = void> = { ok: true; data: T } | { ok: false; error: string }
+
+const BranchNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9._/-]+$/, 'invalid branch name')
+  .refine((name) => !name.startsWith('-'), 'branch cannot start with -')
+  .refine((name) => !name.includes('..'), 'branch cannot contain ..')
+  .refine((name) => !name.endsWith('/'), 'branch cannot end with /')
+
+const CreateWorktreeSchema = z.object({
+  path: z.string().trim().min(1).max(2048),
+  branch: BranchNameSchema,
+  startPoint: z.string().trim().min(1).max(128).optional()
+})
 
 function run(cwd: string, args: string[], timeoutMs = 8000): Result<string> {
   const r = spawnSync('git', args, {
@@ -71,6 +98,56 @@ function runStreaming(
 function isRepo(cwd: string): boolean {
   const r = run(cwd, ['rev-parse', '--is-inside-work-tree'])
   return r.ok && r.data === 'true'
+}
+
+function repoRoot(cwd: string): string | null {
+  const r = run(cwd, ['rev-parse', '--show-toplevel'])
+  return r.ok ? r.data : null
+}
+
+function displayBranch(ref?: string): string | null {
+  if (!ref) return null
+  return ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : ref
+}
+
+function resolveWorktreePath(cwd: string, rawPath: string): string {
+  if (isAbsolute(rawPath)) return resolve(rawPath)
+  const root = repoRoot(cwd) ?? cwd
+  return resolve(dirname(root), rawPath)
+}
+
+function parseWorktrees(raw: string, currentRoot: string | null): GitWorktree[] {
+  const blocks = raw
+    .split(/\n\s*\n/)
+    .map((b) => b.trim())
+    .filter(Boolean)
+  return blocks.flatMap((block) => {
+    const entry: Omit<GitWorktree, 'current'> = {
+      path: '',
+      branch: null,
+      head: null,
+      detached: false,
+      bare: false
+    }
+
+    for (const line of block.split('\n')) {
+      const [key, ...rest] = line.split(' ')
+      const value = rest.join(' ')
+      if (key === 'worktree') entry.path = value
+      else if (key === 'HEAD') entry.head = value
+      else if (key === 'branch') entry.branch = displayBranch(value)
+      else if (key === 'detached') entry.detached = true
+      else if (key === 'bare') entry.bare = true
+    }
+
+    if (!entry.path) return []
+    return [
+      {
+        ...entry,
+        current: currentRoot !== null && resolve(entry.path) === resolve(currentRoot)
+      }
+    ]
+  })
 }
 
 function status(cwd: string): GitStatusResult {
@@ -128,6 +205,13 @@ function branches(cwd: string): Result<{ current: string | null; all: string[] }
   return { ok: true, data: { current, all } }
 }
 
+function worktrees(cwd: string): Result<{ worktrees: GitWorktree[] }> {
+  if (!isRepo(cwd)) return { ok: false, error: 'not a git repository' }
+  const r = run(cwd, ['worktree', 'list', '--porcelain'])
+  if (!r.ok) return r
+  return { ok: true, data: { worktrees: parseWorktrees(r.data, repoRoot(cwd)) } }
+}
+
 function checkout(cwd: string, name: string): Result {
   if (!isRepo(cwd)) return { ok: false, error: 'not a git repository' }
   const r = run(cwd, ['checkout', name])
@@ -137,10 +221,38 @@ function checkout(cwd: string, name: string): Result {
 
 function createBranch(cwd: string, name: string): Result {
   if (!isRepo(cwd)) return { ok: false, error: 'not a git repository' }
-  if (!/^[A-Za-z0-9._/-]+$/.test(name)) return { ok: false, error: 'invalid branch name' }
-  const r = run(cwd, ['checkout', '-b', name])
+  const parsed = BranchNameSchema.safeParse(name)
+  if (!parsed.success)
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'invalid branch name' }
+  const r = run(cwd, ['checkout', '-b', parsed.data])
   if (!r.ok) return r
   return { ok: true, data: undefined }
+}
+
+function createWorktree(
+  cwd: string,
+  rawParams: unknown
+): Result<{ path: string; branch: string; worktrees: GitWorktree[] }> {
+  if (!isRepo(cwd)) return { ok: false, error: 'not a git repository' }
+  const parsed = CreateWorktreeSchema.safeParse(rawParams)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'invalid worktree' }
+  }
+
+  const targetPath = resolveWorktreePath(cwd, parsed.data.path)
+  const startPoint = parsed.data.startPoint ?? 'HEAD'
+  const r = run(cwd, ['worktree', 'add', '-b', parsed.data.branch, targetPath, startPoint], 30000)
+  if (!r.ok) return r
+
+  const updated = worktrees(cwd)
+  return {
+    ok: true,
+    data: {
+      path: targetPath,
+      branch: parsed.data.branch,
+      worktrees: updated.ok ? updated.data.worktrees : []
+    }
+  }
 }
 
 async function commit(cwd: string, message: string, opts?: { addAll?: boolean }): Promise<Result> {
@@ -185,10 +297,12 @@ async function pull(cwd: string): Promise<Result> {
 export function registerGitIpc(getCwd: () => string): void {
   ipcMain.handle('git:status', () => status(getCwd()))
   ipcMain.handle('git:branches', () => branches(getCwd()))
+  ipcMain.handle('git:worktrees', () => worktrees(getCwd()))
   ipcMain.handle('git:checkout', (_e, { name }: { name: string }) => checkout(getCwd(), name))
   ipcMain.handle('git:createBranch', (_e, { name }: { name: string }) =>
     createBranch(getCwd(), name)
   )
+  ipcMain.handle('git:createWorktree', (_e, params: unknown) => createWorktree(getCwd(), params))
   ipcMain.handle('git:commit', (_e, p: { message: string; addAll?: boolean }) =>
     commit(getCwd(), p.message, { addAll: p.addAll })
   )

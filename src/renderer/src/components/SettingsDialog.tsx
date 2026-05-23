@@ -34,6 +34,7 @@ import { Loader } from './Loader'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
 import { cn } from '@renderer/lib/utils'
+import { useAuthStore } from '@renderer/stores/authStore'
 import {
   CODE_FONT_SIZES,
   FONT_FAMILIES,
@@ -79,6 +80,7 @@ function formatChars(n: number): string {
 }
 
 type SectionId =
+  | 'account'
   | 'general'
   | 'appearance'
   | 'editor'
@@ -92,11 +94,13 @@ type SectionId =
 
 interface NavItem {
   id: SectionId
-  labelKey: string
+  labelKey?: string
+  label?: string
   icon: React.ComponentType<{ className?: string }>
 }
 
 const NAV: NavItem[] = [
+  { id: 'account', label: 'Account', icon: User },
   { id: 'general', labelKey: 'general', icon: SettingsIcon },
   { id: 'appearance', labelKey: 'appearance', icon: Palette },
   { id: 'editor', labelKey: 'editor', icon: FileCode },
@@ -111,7 +115,7 @@ const NAV: NavItem[] = [
 
 export function SettingsPage(): React.JSX.Element {
   const t = useTranslations('settings')
-  const [active, setActive] = useState<SectionId>('general')
+  const [active, setActive] = useState<SectionId>('account')
   const closeSettings = useChatStore((s) => s.closeSettings)
 
   return (
@@ -144,7 +148,7 @@ export function SettingsPage(): React.JSX.Element {
                 )}
               >
                 <Icon className="size-4 shrink-0" />
-                <span className="truncate">{t(`nav.${item.labelKey}`)}</span>
+                <span className="truncate">{item.label ?? t(`nav.${item.labelKey}`)}</span>
               </button>
             )
           })}
@@ -161,6 +165,8 @@ export function SettingsPage(): React.JSX.Element {
 
 function SectionRouter({ id }: { id: SectionId }): React.JSX.Element {
   switch (id) {
+    case 'account':
+      return <AccountSection />
     case 'general':
       return <GeneralSection />
     case 'appearance':
@@ -182,6 +188,90 @@ function SectionRouter({ id }: { id: SectionId }): React.JSX.Element {
     case 'usage':
       return <UsageSection />
   }
+}
+
+function AccountSection(): React.JSX.Element {
+  const state = useAuthStore((s) => s.state)
+  const signOut = useAuthStore((s) => s.signOut)
+  const signIn = useAuthStore((s) => s.signIn)
+  const [confirming, setConfirming] = useState(false)
+
+  const email = state.kind === 'signed-in' ? state.email : null
+  const userId = state.kind === 'signed-in' ? state.userId : null
+
+  const openWebAccount = (): void => {
+    const a = document.createElement('a')
+    a.href = 'https://quantumclub.sh/account'
+    a.target = '_blank'
+    a.rel = 'noreferrer noopener'
+    a.click()
+  }
+
+  return (
+    <>
+      <PageHeader title="Account" subtitle="Your Quantum Club identity on this device." />
+      <Field
+        icon={User}
+        title="Signed in as"
+        hint="The Quantum Club account this Codeus install is linked to."
+      >
+        {email ? (
+          <div className="space-y-1">
+            <div className="text-sm text-foreground">{email}</div>
+            {userId ? (
+              <div className="text-xs text-muted-foreground">User ID · {userId.slice(0, 12)}…</div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">You&apos;re signed out.</p>
+            <Button variant="secondary" className="w-fit" onClick={() => void signIn()}>
+              Sign in
+            </Button>
+          </div>
+        )}
+      </Field>
+      {email ? (
+        <Field
+          icon={Cloud}
+          title="Manage on web"
+          hint="Open your account on quantumclub.sh — billing history, top-ups, profile."
+        >
+          <Button variant="secondary" className="w-fit" onClick={openWebAccount}>
+            Open account
+          </Button>
+        </Field>
+      ) : null}
+      {email ? (
+        <Field
+          icon={X}
+          title="Sign out"
+          hint="Revokes this device's session token. You'll need to sign in again to use Codeus."
+        >
+          {confirming ? (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="destructive"
+                onClick={async () => {
+                  setConfirming(false)
+                  await signOut()
+                }}
+              >
+                Confirm sign out
+              </Button>
+              <Button variant="ghost" onClick={() => setConfirming(false)}>
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <Button variant="secondary" className="w-fit" onClick={() => setConfirming(true)}>
+              Sign out of this device
+            </Button>
+          )}
+        </Field>
+      ) : null}
+    </>
+  )
 }
 
 function PageHeader({ title, subtitle }: { title: string; subtitle?: string }): React.JSX.Element {

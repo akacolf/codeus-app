@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import { z } from 'zod'
-import { getAuthHeader } from './identity'
+import { getSessionToken, onAuthRejected } from './auth'
+import { getAccountId } from './identity'
 
 // Wire contract with the quantum-club-website proxy. The proxy implementation
 // lives in src/app/api/codeus/v1/{balance,topup}/route.ts over there.
@@ -41,11 +42,25 @@ export type TopupQuoteResult =
     }
   | { ok: false; error: string }
 
+function authedHeaders(extra?: Record<string, string>): Record<string, string> | null {
+  const token = getSessionToken()
+  if (!token) return null
+  return {
+    Authorization: `Bearer ${token}`,
+    'X-QC-Account': getAccountId(),
+    ...(extra ?? {})
+  }
+}
+
 async function fetchBalance(): Promise<BalanceResult> {
+  const headers = authedHeaders()
+  if (!headers) return { ok: false, error: 'signed out' }
   try {
-    const res = await fetch(`${QC_PROXY_BASE_URL}/balance`, {
-      headers: { ...getAuthHeader() }
-    })
+    const res = await fetch(`${QC_PROXY_BASE_URL}/balance`, { headers })
+    if (res.status === 401) {
+      onAuthRejected()
+      return { ok: false, error: 'signed out' }
+    }
     if (!res.ok) return { ok: false, error: `proxy ${res.status}` }
     const parsed = BalanceResponseSchema.safeParse(await res.json())
     if (!parsed.success) return { ok: false, error: 'invalid balance response' }
@@ -65,12 +80,18 @@ const TopupRequestSchema = z.object({
 })
 
 async function requestTopup(amountMicros: number): Promise<TopupQuoteResult> {
+  const headers = authedHeaders({ 'content-type': 'application/json' })
+  if (!headers) return { ok: false, error: 'signed out' }
   try {
     const res = await fetch(`${QC_PROXY_BASE_URL}/topup/quote`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', ...getAuthHeader() },
+      headers,
       body: JSON.stringify({ amountMicros })
     })
+    if (res.status === 401) {
+      onAuthRejected()
+      return { ok: false, error: 'signed out' }
+    }
     if (!res.ok) return { ok: false, error: `proxy ${res.status}` }
     const parsed = TopupQuoteResponseSchema.safeParse(await res.json())
     if (!parsed.success) return { ok: false, error: 'invalid topup response' }

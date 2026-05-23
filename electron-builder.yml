@@ -1,5 +1,9 @@
 appId: club.quantum.qccodeus
 productName: QC Codeus
+protocols:
+  - name: QC Codeus
+    schemes:
+      - qc-codeus
 directories:
   buildResources: build
 files:

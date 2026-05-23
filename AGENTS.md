@@ -91,3 +91,4 @@ Components land in `src/renderer/src/components/ui/`. After install, audit for b
 - Commits are authored as `akacolf <98905290+akacolf@users.noreply.github.com>` (set in this repo's local git config).
 - **No `Co-Authored-By: Codex …` trailer** — the user has explicitly opted out.
 - Remote: `https://github.com/atomicfield/qc-codeus` (private).
+- Companion website repo lives at `~/Desktop/quantum-club-website`. Its development branch is `dev`: commit and push website work to `dev` first, then merge `dev` forward to `main` and push `main`.

@@ -5,6 +5,7 @@ import { SearchChatsDialog } from './components/SearchChatsDialog'
 import { SettingsPage } from './components/SettingsDialog'
 import { ShortcutsDialog } from './components/ShortcutsDialog'
 import { Sidebar } from './components/Sidebar'
+import { SignInGate } from './components/SignInGate'
 import { Splash } from './components/Splash'
 import { TerminalPanel } from './components/TerminalPanel'
 import { Thread } from './components/Thread'
@@ -19,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle
 } from './components/ui/dialog'
+import { Toaster } from './components/ui/sonner'
 import { useSettings } from './lib/settings'
 import { matchShortcut } from './lib/shortcuts'
 import { useThemeEffect } from './lib/theme'
@@ -274,134 +276,138 @@ function App(): React.JSX.Element {
 
   return (
     <div className="relative flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
-      <Toolbar
-        sidebarOpen={sidebarOpen}
-        trafficLightInset={trafficLightInset}
-        onToggleSidebar={() => setSidebarOpen((v) => !v)}
-        onBack={canBack ? back : undefined}
-        onForward={canForward ? forward : undefined}
-        onCompose={view.type === 'home' ? undefined : newChat}
-        onOpenEditor={isEditor ? closeEditor : openEditor}
-        editorActive={isEditor}
-        onOpenTerminal={() => setTerminalOpen((v) => !v)}
-        onOpenSettings={isSettings ? closeSettings : openSettings}
-        onOpenShortcuts={() => setShortcutsOpen(true)}
-        onOpenAbout={() => setAboutOpen(true)}
-      />
-      <main className="min-h-0 flex-1">
-        {isSettings ? (
-          <SettingsPage />
-        ) : isEditor ? (
-          <Workspace />
-        ) : activeChat ? (
-          <Thread
-            chat={activeChat}
-            draft={draft}
-            onDraftChange={setDraft}
-            onSubmit={sendMessage}
-            settings={settingsSnapshot}
-          />
-        ) : (
-          <Home
-            draft={draft}
-            onDraftChange={setDraft}
-            onSubmit={sendMessage}
-            onOpenTerminal={() => setTerminalOpen(true)}
-            onReveal={revealInFolder}
-            onOpenConnectTool={() => setConnectOpen(true)}
-            onOpenGit={() => setGitOpen(true)}
-            branch={gitInfo?.branch ?? null}
-            dirtyCount={gitInfo?.dirtyCount ?? 0}
-            showSuggestions={settings.suggestedPrompts}
-          />
-        )}
-        <TerminalPanel open={terminalOpen} onClose={() => setTerminalOpen(false)} />
-      </main>
+      <SignInGate>
+        <Toolbar
+          sidebarOpen={sidebarOpen}
+          trafficLightInset={trafficLightInset}
+          onToggleSidebar={() => setSidebarOpen((v) => !v)}
+          onBack={canBack ? back : undefined}
+          onForward={canForward ? forward : undefined}
+          onCompose={view.type === 'home' ? undefined : newChat}
+          onOpenEditor={isEditor ? closeEditor : openEditor}
+          editorActive={isEditor}
+          onOpenTerminal={() => setTerminalOpen((v) => !v)}
+          onOpenSettings={isSettings ? closeSettings : openSettings}
+          onOpenShortcuts={() => setShortcutsOpen(true)}
+          onOpenAbout={() => setAboutOpen(true)}
+        />
+        <main className="min-h-0 flex-1">
+          {isSettings ? (
+            <SettingsPage />
+          ) : isEditor ? (
+            <Workspace />
+          ) : activeChat ? (
+            <Thread
+              chat={activeChat}
+              draft={draft}
+              onDraftChange={setDraft}
+              onSubmit={sendMessage}
+              settings={settingsSnapshot}
+            />
+          ) : (
+            <Home
+              draft={draft}
+              onDraftChange={setDraft}
+              onSubmit={sendMessage}
+              onOpenTerminal={() => setTerminalOpen(true)}
+              onReveal={revealInFolder}
+              onOpenConnectTool={() => setConnectOpen(true)}
+              onOpenGit={() => setGitOpen(true)}
+              branch={gitInfo?.branch ?? null}
+              dirtyCount={gitInfo?.dirtyCount ?? 0}
+              showSuggestions={settings.suggestedPrompts}
+            />
+          )}
+          <TerminalPanel open={terminalOpen} onClose={() => setTerminalOpen(false)} />
+        </main>
 
-      <Sidebar
-        open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        chats={chats}
-        activeChatId={activeChat?.id ?? null}
-        trafficLightInset={trafficLightInset}
-        width={settings.sidebarWidth}
-        onSelectChat={(id) => {
-          selectChat(id)
-          setSidebarOpen(false)
-        }}
-        onNewChat={() => {
-          newChat()
-          setSidebarOpen(false)
-        }}
-        onOpenSearch={() => setSearchOpen(true)}
-        onBack={canBack ? back : undefined}
-        onForward={canForward ? forward : undefined}
-      />
+        <Sidebar
+          open={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          chats={chats}
+          activeChatId={activeChat?.id ?? null}
+          trafficLightInset={trafficLightInset}
+          width={settings.sidebarWidth}
+          onSelectChat={(id) => {
+            selectChat(id)
+            setSidebarOpen(false)
+          }}
+          onNewChat={() => {
+            newChat()
+            setSidebarOpen(false)
+          }}
+          onOpenSearch={() => setSearchOpen(true)}
+          onBack={canBack ? back : undefined}
+          onForward={canForward ? forward : undefined}
+        />
 
-      <SearchChatsDialog
-        open={searchOpen}
-        onOpenChange={setSearchOpen}
-        chats={chats}
-        activeChatId={activeChat?.id ?? null}
-        onSelectChat={(id) => selectChat(id)}
-      />
+        <SearchChatsDialog
+          open={searchOpen}
+          onOpenChange={setSearchOpen}
+          chats={chats}
+          activeChatId={activeChat?.id ?? null}
+          onSelectChat={(id) => selectChat(id)}
+        />
 
-      <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+        <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
 
-      <Dialog open={aboutOpen} onOpenChange={setAboutOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>About QC Codeus</DialogTitle>
-            <DialogDescription>Quantum Club’s research-preview agentic IDE.</DialogDescription>
-          </DialogHeader>
-          <p className="text-sm leading-relaxed text-foreground/85">
-            Built by Quantum Club. This is a research preview — agent execution, IPC streaming, and
-            the editor pane are still landing.
-          </p>
-        </DialogContent>
-      </Dialog>
+        <Dialog open={aboutOpen} onOpenChange={setAboutOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>About QC Codeus</DialogTitle>
+              <DialogDescription>Quantum Club’s research-preview agentic IDE.</DialogDescription>
+            </DialogHeader>
+            <p className="text-sm leading-relaxed text-foreground/85">
+              Built by Quantum Club. This is a research preview — agent execution, IPC streaming,
+              and the editor pane are still landing.
+            </p>
+          </DialogContent>
+        </Dialog>
 
-      <Dialog open={connectOpen} onOpenChange={setConnectOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Connect a tool</DialogTitle>
-            <DialogDescription>
-              Tool integrations are on the roadmap — first-class connectors aren’t live yet.
-            </DialogDescription>
-          </DialogHeader>
-          <ul className="flex flex-col gap-2 text-sm text-foreground/85">
-            <li className="rounded-lg bg-foreground/5 px-3 py-2">
-              Linear — pull issues, file tickets from a thread
-            </li>
-            <li className="rounded-lg bg-foreground/5 px-3 py-2">
-              GitHub — open PRs, comment, run checks
-            </li>
-            <li className="rounded-lg bg-foreground/5 px-3 py-2">
-              Vercel — deploy, inspect logs, read env
-            </li>
-          </ul>
-          <p className="text-xs text-muted-foreground">
-            Want one of these sooner?{' '}
-            <a
-              href="https://github.com/atomicfield/qc-codeus/issues"
-              target="_blank"
-              rel="noreferrer noopener"
-              className="underline underline-offset-2"
-            >
-              Open an issue
-            </a>
-            .
-          </p>
-        </DialogContent>
-      </Dialog>
+        <Dialog open={connectOpen} onOpenChange={setConnectOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Connect a tool</DialogTitle>
+              <DialogDescription>
+                Tool integrations are on the roadmap — first-class connectors aren’t live yet.
+              </DialogDescription>
+            </DialogHeader>
+            <ul className="flex flex-col gap-2 text-sm text-foreground/85">
+              <li className="rounded-lg bg-foreground/5 px-3 py-2">
+                Linear — pull issues, file tickets from a thread
+              </li>
+              <li className="rounded-lg bg-foreground/5 px-3 py-2">
+                GitHub — open PRs, comment, run checks
+              </li>
+              <li className="rounded-lg bg-foreground/5 px-3 py-2">
+                Vercel — deploy, inspect logs, read env
+              </li>
+            </ul>
+            <p className="text-xs text-muted-foreground">
+              Want one of these sooner?{' '}
+              <a
+                href="https://github.com/atomicfield/qc-codeus/issues"
+                target="_blank"
+                rel="noreferrer noopener"
+                className="underline underline-offset-2"
+              >
+                Open an issue
+              </a>
+              .
+            </p>
+          </DialogContent>
+        </Dialog>
 
-      <GitPanel open={gitOpen} onOpenChange={setGitOpen} />
+        <GitPanel open={gitOpen} onOpenChange={setGitOpen} />
 
-      <TopupDialog />
+        <TopupDialog />
 
-      <UpdateBanner />
+        <UpdateBanner />
 
-      {booting && <Splash onDone={() => setBooting(false)} />}
+        <Toaster />
+
+        {booting && <Splash onDone={() => setBooting(false)} />}
+      </SignInGate>
     </div>
   )
 }

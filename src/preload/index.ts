@@ -27,6 +27,22 @@ export type ChatToolEvent =
       error?: string
       durationMs: number
     }
+  | {
+      kind: 'progress'
+      requestId: string
+      toolCallId: string
+      stream: 'stdout' | 'stderr'
+      chunk: string
+      truncated?: boolean
+    }
+
+export interface ChatCommandApprovalEvent {
+  requestId: string
+  approvalId: string
+  command: string
+  args: string[]
+  cwd: string
+}
 
 export interface X402Envelope {
   x402Version?: 2
@@ -52,6 +68,7 @@ export interface X402Envelope {
 export interface ChatHandlers {
   onChunk: (delta: string) => void
   onTool: (event: ChatToolEvent) => void
+  onCommandApproval?: (event: ChatCommandApprovalEvent) => void
   onDone: () => void
   onError: (message: string) => void
   onPaymentRequired?: (envelope: X402Envelope) => void
@@ -75,10 +92,14 @@ function startChat(params: ChatStartParams, handlers: ChatHandlers): () => void 
   const pay = (_e: IpcRendererEvent, p: { requestId: string; envelope: X402Envelope }): void => {
     if (p.requestId === requestId) handlers.onPaymentRequired?.(p.envelope)
   }
+  const commandApproval = (_e: IpcRendererEvent, p: ChatCommandApprovalEvent): void => {
+    if (p.requestId === requestId) handlers.onCommandApproval?.(p)
+  }
 
   const cleanup = (then: () => void): void => {
     ipcRenderer.off('chat:chunk', chunk)
     ipcRenderer.off('chat:tool', toolEvt)
+    ipcRenderer.off('chat:command-approval', commandApproval)
     ipcRenderer.off('chat:done', done)
     ipcRenderer.off('chat:error', err)
     ipcRenderer.off('chat:payment-required', pay)
@@ -87,6 +108,7 @@ function startChat(params: ChatStartParams, handlers: ChatHandlers): () => void 
 
   ipcRenderer.on('chat:chunk', chunk)
   ipcRenderer.on('chat:tool', toolEvt)
+  ipcRenderer.on('chat:command-approval', commandApproval)
   ipcRenderer.on('chat:done', done)
   ipcRenderer.on('chat:error', err)
   ipcRenderer.on('chat:payment-required', pay)
@@ -249,6 +271,15 @@ export type GitStatus =
 
 export type GitResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string }
 
+export interface GitWorktree {
+  path: string
+  branch: string | null
+  head: string | null
+  detached: boolean
+  bare: boolean
+  current: boolean
+}
+
 export type SandboxCredsState =
   | { ok: true; configured: true; teamId: string; projectId: string; tokenPreview: string }
   | { ok: false; configured: false }
@@ -353,13 +384,51 @@ const mcpBridge = {
     ipcRenderer.invoke('mcp:updateState', patch)
 }
 
+export type AuthState =
+  | { kind: 'unknown' }
+  | { kind: 'signed-out' }
+  | { kind: 'starting' }
+  | {
+      kind: 'awaiting-browser'
+      userCode: string
+      linkUrl: string
+      expiresAt: number
+    }
+  | { kind: 'signed-in'; userId: string; email: string }
+  | { kind: 'error'; message: string }
+
+function onAuthState(cb: (state: AuthState) => void): () => void {
+  const handler = (_e: IpcRendererEvent, state: AuthState): void => cb(state)
+  ipcRenderer.on('auth:state', handler)
+  ipcRenderer.send('auth:subscribe')
+  return (): void => {
+    ipcRenderer.off('auth:state', handler)
+  }
+}
+
+const authBridge = {
+  status: (): Promise<AuthState> => ipcRenderer.invoke('auth:status'),
+  signIn: (): Promise<AuthState> => ipcRenderer.invoke('auth:start'),
+  cancel: (): Promise<AuthState> => ipcRenderer.invoke('auth:cancel'),
+  signOut: (): Promise<AuthState> => ipcRenderer.invoke('auth:signout'),
+  onState: onAuthState
+}
+
 const gitBridge = {
   status: (): Promise<GitStatus> => ipcRenderer.invoke('git:status'),
   branches: (): Promise<GitResult<{ current: string | null; all: string[] }>> =>
     ipcRenderer.invoke('git:branches'),
+  worktrees: (): Promise<GitResult<{ worktrees: GitWorktree[] }>> =>
+    ipcRenderer.invoke('git:worktrees'),
   checkout: (name: string): Promise<GitResult> => ipcRenderer.invoke('git:checkout', { name }),
   createBranch: (name: string): Promise<GitResult> =>
     ipcRenderer.invoke('git:createBranch', { name }),
+  createWorktree: (params: {
+    path: string
+    branch: string
+    startPoint?: string
+  }): Promise<GitResult<{ path: string; branch: string; worktrees: GitWorktree[] }>> =>
+    ipcRenderer.invoke('git:createWorktree', params),
   commit: (message: string, addAll = true): Promise<GitResult> =>
     ipcRenderer.invoke('git:commit', { message, addAll }),
   push: (opts?: { setUpstream?: boolean }): Promise<GitResult> =>
@@ -397,7 +466,15 @@ const api = {
     }): Promise<{ launchAtLogin: boolean; startMinimized: boolean; closeToTray: boolean }> =>
       ipcRenderer.invoke('system:set', patch)
   },
-  chat: { start: startChat },
+  chat: {
+    start: startChat,
+    respondToCommandApproval: (decision: {
+      approvalId: string
+      approved: boolean
+      remember?: boolean
+      instruction?: string
+    }): void => ipcRenderer.send('chat:command-approval:respond', decision)
+  },
   fs: fsBridge,
   terminal: { open: openPty },
   updater: updaterBridge,
@@ -405,7 +482,8 @@ const api = {
   git: gitBridge,
   sandbox: sandboxBridge,
   mcp: mcpBridge,
-  billing: billingBridge
+  billing: billingBridge,
+  auth: authBridge
 }
 
 export type Api = typeof api

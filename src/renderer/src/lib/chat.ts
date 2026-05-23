@@ -12,6 +12,12 @@ export interface ToolPart {
   error?: string
   startedAt: number
   durationMs?: number
+  /** Incrementally streamed stdout while a run_command is in progress. */
+  stdoutLive?: string
+  /** Incrementally streamed stderr while a run_command is in progress. */
+  stderrLive?: string
+  /** True when live output was truncated at the cap. */
+  truncatedLive?: boolean
 }
 
 export interface TextPart {
@@ -30,6 +36,13 @@ export interface Message {
   createdAt: number
 }
 
+export interface CommandApproval {
+  approvalId: string
+  command: string
+  args: string[]
+  cwd: string
+}
+
 export interface Chat {
   id: string
   title: string
@@ -38,6 +51,7 @@ export interface Chat {
   projectCwd?: string
   streamingMessageId?: string
   error?: string
+  commandApprovals?: CommandApproval[]
 }
 
 export type View =
@@ -64,7 +78,12 @@ export function loadChats(): Chat[] {
     const raw = window.localStorage.getItem(STORAGE_KEY)
     if (!raw) return []
     const parsed = JSON.parse(raw) as Chat[]
-    return parsed.map((c) => ({ ...c, streamingMessageId: undefined, error: undefined }))
+    return parsed.map((c) => ({
+      ...c,
+      streamingMessageId: undefined,
+      error: undefined,
+      commandApprovals: undefined
+    }))
   } catch {
     return []
   }
@@ -76,7 +95,8 @@ export function saveChats(chats: Chat[]): void {
     const trimmed = chats.slice(0, MAX_PERSISTED).map((c) => ({
       ...c,
       streamingMessageId: undefined,
-      error: undefined
+      error: undefined,
+      commandApprovals: undefined
     }))
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed))
   } catch {

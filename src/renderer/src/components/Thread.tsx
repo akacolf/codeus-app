@@ -20,7 +20,14 @@ import {
   X
 } from 'lucide-react'
 import { FileIcon } from './FileIcon'
-import type { Chat, Message, MessagePart, TextPart, ToolPart } from '@renderer/lib/chat'
+import type {
+  Chat,
+  CommandApproval,
+  Message,
+  MessagePart,
+  TextPart,
+  ToolPart
+} from '@renderer/lib/chat'
 import { cn } from '@renderer/lib/utils'
 import { Button } from '@renderer/components/ui/button'
 import {
@@ -65,7 +72,9 @@ export function Thread({
   const editUserMessage = useChatStore((s) => s.editUserMessage)
   const retryAfterError = useChatStore((s) => s.retryAfterError)
   const cancelQueued = useChatStore((s) => s.cancelQueued)
+  const respondToCommandApproval = useChatStore((s) => s.respondToCommandApproval)
   const queued = useChatStore((s) => s.queued[chat.id]) ?? []
+  const commandApprovals = chat.commandApprovals ?? []
   const { settings: uiSettings } = useSettings()
   const messageGap =
     uiSettings.chatDensity === 'compact'
@@ -213,6 +222,19 @@ export function Thread({
               ))}
             </div>
           )}
+          {commandApprovals.length > 0 && (
+            <div className="flex w-full flex-col gap-2 rounded-2xl bg-card/95 p-3 text-xs shadow-lg backdrop-blur">
+              {commandApprovals.map((approval) => (
+                <CommandApprovalCard
+                  key={approval.approvalId}
+                  approval={approval}
+                  onRespond={(decision) =>
+                    respondToCommandApproval(chat.id, approval.approvalId, decision)
+                  }
+                />
+              ))}
+            </div>
+          )}
           <Composer
             draft={draft}
             onDraftChange={onDraftChange}
@@ -222,6 +244,90 @@ export function Thread({
           />
         </div>
       </div>
+    </div>
+  )
+}
+
+function CommandApprovalCard({
+  approval,
+  onRespond
+}: {
+  approval: CommandApproval
+  onRespond: (decision: { approved: boolean; remember?: boolean; instruction?: string }) => void
+}): React.JSX.Element {
+  const [declining, setDeclining] = useState(false)
+  const [instruction, setInstruction] = useState('')
+  const command = formatCommand(approval.command, approval.args)
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-start gap-2">
+        <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-foreground/8 text-muted-foreground">
+          <Terminal className="size-3.5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-[13px] text-foreground/90">Run command?</div>
+          <div className="mt-1 truncate font-mono text-[12px] text-foreground/75">{command}</div>
+          <div className="mt-0.5 text-[11px] text-muted-foreground">cwd: {approval.cwd}</div>
+        </div>
+      </div>
+      {!declining ? (
+        <div className="flex flex-wrap items-center gap-1.5 pl-7">
+          <Button size="xs" onClick={() => onRespond({ approved: true })}>
+            Yes
+          </Button>
+          <Button
+            size="xs"
+            variant="ghost"
+            onClick={() => onRespond({ approved: true, remember: true })}
+          >
+            yes and dont ask for this session again
+          </Button>
+          <Button size="xs" variant="ghost" onClick={() => setDeclining(true)}>
+            No
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2 pl-7">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[13px] text-foreground/85">No,</span>
+            <input
+              value={instruction}
+              onChange={(e) => setInstruction(e.target.value)}
+              placeholder="and tell what the agent to do differently"
+              autoFocus
+              className="min-w-0 flex-1 rounded-md bg-foreground/6 px-2.5 py-1.5 text-[13px] text-foreground outline-none placeholder:text-muted-foreground"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  onRespond({ approved: false, instruction: instruction.trim() })
+                }
+                if (e.key === 'Escape') {
+                  setDeclining(false)
+                  setInstruction('')
+                }
+              }}
+            />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Button
+              size="xs"
+              onClick={() => onRespond({ approved: false, instruction: instruction.trim() })}
+            >
+              Execute
+            </Button>
+            <Button
+              size="xs"
+              variant="ghost"
+              onClick={() => {
+                setDeclining(false)
+                setInstruction('')
+              }}
+            >
+              Back
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -354,7 +460,12 @@ function MessageBubble({
 }
 
 function toolLabel(tool: ToolPart): string {
-  const args = (tool.args ?? {}) as { path?: string; content?: string }
+  const args = (tool.args ?? {}) as {
+    path?: string
+    content?: string
+    command?: string
+    args?: string[]
+  }
   const path = args.path ?? ''
   const present = tool.status === 'running'
   const failed = tool.status === 'error'
@@ -374,6 +485,12 @@ function toolLabel(tool: ToolPart): string {
       return count !== null
         ? `Explored ${count} file${count === 1 ? '' : 's'}`
         : `Explored ${where}`
+    }
+    case 'run_command': {
+      const command = formatCommand(args.command, args.args)
+      if (failed) return `Command failed: ${command || 'command'}`
+      if (present) return `Running ${command || 'command'}`
+      return `Ran ${command || 'command'}`
     }
     default:
       if (failed) return `Failed: ${tool.name}`
@@ -504,22 +621,30 @@ function ToolIcon({ name }: { name: string }): React.JSX.Element {
   if (name === 'read_file') return <FileText className={className} />
   if (name === 'write_file') return <PencilLine className={className} />
   if (name === 'list_directory') return <Search className={className} />
+  if (name === 'run_command') return <Terminal className={className} />
   return <Terminal className={className} />
 }
 
 function ActionChip({ tool }: { tool: ToolPart }): React.JSX.Element {
-  const [open, setOpen] = useState(false)
+  const [userOverride, setUserOverride] = useState<boolean | null>(null)
   const isError = tool.status === 'error'
   const isRunning = tool.status === 'running'
+  const hasLiveOutput = isRunning && !!(tool.stdoutLive || tool.stderrLive)
   const label = toolLabel(tool)
   const hasDetails =
-    tool.args !== undefined || tool.result !== undefined || tool.error !== undefined
+    tool.args !== undefined ||
+    tool.result !== undefined ||
+    tool.error !== undefined ||
+    hasLiveOutput
+
+  // Auto-open when a running command starts producing output.
+  const open = userOverride ?? hasLiveOutput
 
   return (
     <div className="flex flex-col gap-1.5">
       <button
         type="button"
-        onClick={() => hasDetails && setOpen((v) => !v)}
+        onClick={() => hasDetails && setUserOverride(!open)}
         aria-expanded={open}
         aria-label={open ? `Hide ${label} details` : `Show ${label} details`}
         className={cn(
@@ -560,7 +685,13 @@ interface DetailRow {
 }
 
 function buildDetailRows(tool: ToolPart): DetailRow[] {
-  const args = (tool.args ?? {}) as { path?: string; content?: string }
+  const args = (tool.args ?? {}) as {
+    path?: string
+    content?: string
+    command?: string
+    args?: string[]
+    cwd?: string
+  }
   const path = args.path ?? ''
   switch (tool.name) {
     case 'read_file': {
@@ -602,6 +733,19 @@ function buildDetailRows(tool: ToolPart): DetailRow[] {
         target: e.name || '(unknown)'
       }))
     }
+    case 'run_command': {
+      const result = tool.result as
+        | { command?: string; cwd?: string; exitCode?: number | null; timedOut?: boolean }
+        | undefined
+      return [
+        { verb: 'Command', target: result?.command ?? formatCommand(args.command, args.args) },
+        { verb: 'Cwd', target: result?.cwd ?? args.cwd ?? '.', muted: true },
+        ...(result?.exitCode !== undefined
+          ? [{ verb: 'Exit', target: String(result.exitCode), muted: result.exitCode === 0 }]
+          : []),
+        ...(result?.timedOut ? [{ verb: 'Timeout', target: 'Yes', muted: true }] : [])
+      ]
+    }
     default:
       return [{ verb: 'Ran', target: tool.name }]
   }
@@ -610,6 +754,24 @@ function buildDetailRows(tool: ToolPart): DetailRow[] {
 function ToolDetails({ tool }: { tool: ToolPart }): React.JSX.Element {
   const rows = buildDetailRows(tool)
   const errorText = tool.error
+  const isRunning = tool.status === 'running'
+  const commandResult =
+    tool.name === 'run_command'
+      ? (tool.result as { stdout?: string; stderr?: string; truncated?: boolean } | undefined)
+      : undefined
+  // While running, show live-streamed output; once finished, show final result.
+  const stdout = isRunning ? tool.stdoutLive : commandResult?.stdout
+  const stderr = isRunning ? tool.stderrLive : commandResult?.stderr
+  const isTruncated = isRunning ? tool.truncatedLive : commandResult?.truncated
+  const liveOutputRef = useRef<HTMLPreElement>(null)
+
+  // Auto-scroll live output to the bottom as new chunks arrive.
+  useEffect(() => {
+    if (isRunning && liveOutputRef.current) {
+      liveOutputRef.current.scrollTop = liveOutputRef.current.scrollHeight
+    }
+  }, [isRunning, stdout, stderr])
+
   return (
     <div className="ml-5 flex flex-col gap-2 text-[13px] text-foreground/85">
       {errorText && (
@@ -644,6 +806,41 @@ function ToolDetails({ tool }: { tool: ToolPart }): React.JSX.Element {
       {tool.durationMs !== undefined && (
         <div className="text-[11px] text-muted-foreground">{formatDuration(tool.durationMs)}</div>
       )}
+      {stdout && (
+        <CommandOutput
+          label="stdout"
+          text={stdout}
+          scrollRef={isRunning ? liveOutputRef : undefined}
+        />
+      )}
+      {stderr && <CommandOutput label="stderr" text={stderr} />}
+      {isTruncated && <div className="text-[11px] text-muted-foreground">Output truncated</div>}
+    </div>
+  )
+}
+
+function formatCommand(command?: string, args?: string[]): string {
+  return [command, ...(Array.isArray(args) ? args : [])].filter(Boolean).join(' ')
+}
+
+function CommandOutput({
+  label,
+  text,
+  scrollRef
+}: {
+  label: string
+  text: string
+  scrollRef?: React.RefObject<HTMLPreElement | null>
+}): React.JSX.Element {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <pre
+        ref={scrollRef}
+        className="max-h-64 overflow-auto rounded-md bg-foreground/4 px-2.5 py-2 font-mono text-[11px] leading-relaxed text-foreground/80"
+      >
+        {text}
+      </pre>
     </div>
   )
 }

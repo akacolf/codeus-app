@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { z } from 'zod'
 
 export const PERMISSIONS = [
-  { id: 'default', label: 'Default' },
+  { id: 'default', label: 'Default permissions' },
   { id: 'auto-review', label: 'Auto-review' },
   { id: 'full-access', label: 'Full access' }
 ] as const
