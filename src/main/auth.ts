@@ -11,7 +11,11 @@ import { getAccountId } from './identity'
 // safeStorage. The custom `qc-codeus://` protocol shortcuts polling once
 // the OS hands us the deeplink, but polling stays as the durable fallback.
 
-const QC_PROXY_BASE_URL = process.env.QC_PROXY_BASE_URL || 'https://api.quantumclub.sh/v1'
+const QC_AUTH_BASE_URL = (
+  process.env.QC_AUTH_BASE_URL ||
+  process.env.QC_PROXY_BASE_URL ||
+  'https://quantumclub.sh/api/codeus/v1'
+).replace(/\/+$/, '')
 
 // Renderer-facing state. The same shape is mirrored by the auth store.
 export type AuthState =
@@ -163,7 +167,7 @@ const PollApprovedSchema = z.object({
 })
 
 async function initDeviceLink(): Promise<InitResponse> {
-  const res = await fetch(`${QC_PROXY_BASE_URL}/device/link/init`, {
+  const res = await fetch(`${QC_AUTH_BASE_URL}/device/link/init`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ accountId: getAccountId() })
@@ -352,7 +356,7 @@ async function signOut(): Promise<void> {
   setState({ kind: 'signed-out' })
   if (!token) return
   try {
-    await fetch(`${QC_PROXY_BASE_URL}/auth/signout`, {
+    await fetch(`${QC_AUTH_BASE_URL}/auth/signout`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` }
     })
@@ -405,7 +409,7 @@ async function verifyExistingSession(): Promise<void> {
   const token = currentSession?.token
   if (!token) return
   try {
-    const res = await fetch(`${QC_PROXY_BASE_URL}/auth/whoami`, {
+    const res = await fetch(`${QC_AUTH_BASE_URL}/auth/whoami`, {
       headers: { Authorization: `Bearer ${token}` }
     })
     if (res.status === 401) onAuthRejected()

@@ -9,12 +9,13 @@ function Toaster(props: ToasterProps): React.JSX.Element {
       richColors={false}
       toastOptions={{
         classNames: {
-          toast: 'group toast bg-popover text-popover-foreground shadow-2xl rounded-lg px-4 py-3',
+          toast:
+            'group toast rounded-[22px] border-0 bg-popover px-5 py-4 text-popover-foreground shadow-2xl [font-family:var(--qc-font-family)]',
           title: 'text-sm font-medium',
           description: 'text-xs text-muted-foreground',
           actionButton: 'bg-primary text-primary-foreground rounded-full px-3 py-1.5 text-xs',
           cancelButton: 'bg-secondary text-secondary-foreground rounded-full px-3 py-1.5 text-xs',
-          closeButton: 'bg-popover text-muted-foreground hover:text-foreground'
+          closeButton: 'rounded-full bg-popover text-muted-foreground hover:text-foreground'
         }
       }}
       {...props}
