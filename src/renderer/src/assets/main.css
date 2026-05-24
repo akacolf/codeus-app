@@ -186,3 +186,23 @@ input {
   animation-duration: 0.01ms !important;
   animation-iteration-count: 1 !important;
 }
+
+.qc-review-line-added {
+  background: rgba(57, 217, 138, 0.12);
+}
+
+.qc-review-line-removed {
+  background: rgba(255, 92, 92, 0.12);
+}
+
+.qc-review-gutter-added {
+  width: 3px !important;
+  margin-left: 3px;
+  background: #39d98a;
+}
+
+.qc-review-gutter-removed {
+  width: 3px !important;
+  margin-left: 3px;
+  background: #ff5c5c;
+}

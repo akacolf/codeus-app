@@ -44,6 +44,8 @@ export interface ChatCommandApprovalEvent {
   cwd: string
 }
 
+export type UndoWriteResult = { ok: true } | { ok: false; error: string }
+
 export interface X402Envelope {
   x402Version?: 2
   error?: string
@@ -357,7 +359,19 @@ export interface McpStatePatch {
 }
 
 export type BalanceResult =
-  | { ok: true; balanceMicros: number; freeCreditMicros: number; walletAddress: string | null }
+  | {
+      ok: true
+      balanceMicros: number
+      freeCreditMicros: number
+      walletAddress: string | null
+      activePlan: {
+        planId: string
+        status: 'active' | 'expired' | 'cancelled'
+        currentPeriodStart: string
+        currentPeriodEnd: string
+        monthlyCreditMicros: number
+      } | null
+    }
   | { ok: false; error: string }
 
 export type PaymentChain = 'base' | 'solana'
@@ -472,6 +486,8 @@ const api = {
   },
   chat: {
     start: startChat,
+    undoWrite: (token: string): Promise<UndoWriteResult> =>
+      ipcRenderer.invoke('chat:undo-write', { token }),
     respondToCommandApproval: (decision: {
       approvalId: string
       approved: boolean

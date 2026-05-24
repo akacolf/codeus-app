@@ -11,7 +11,17 @@ const QC_PROXY_BASE_URL = process.env.QC_PROXY_BASE_URL || 'https://api.quantumc
 const BalanceResponseSchema = z.object({
   balanceMicros: z.number().int().nonnegative(),
   freeCreditMicros: z.number().int().nonnegative(),
-  walletAddress: z.string().nullable().optional()
+  walletAddress: z.string().nullable().optional(),
+  activePlan: z
+    .object({
+      planId: z.string(),
+      status: z.enum(['active', 'expired', 'cancelled']),
+      currentPeriodStart: z.string(),
+      currentPeriodEnd: z.string(),
+      monthlyCreditMicros: z.number().int().nonnegative()
+    })
+    .nullable()
+    .optional()
 })
 
 const PaymentChainSchema = z.enum(['base', 'solana'])
@@ -32,7 +42,19 @@ const TopupQuoteResponseSchema = z.object({
 })
 
 export type BalanceResult =
-  | { ok: true; balanceMicros: number; freeCreditMicros: number; walletAddress: string | null }
+  | {
+      ok: true
+      balanceMicros: number
+      freeCreditMicros: number
+      walletAddress: string | null
+      activePlan: {
+        planId: string
+        status: 'active' | 'expired' | 'cancelled'
+        currentPeriodStart: string
+        currentPeriodEnd: string
+        monthlyCreditMicros: number
+      } | null
+    }
   | { ok: false; error: string }
 
 export type TopupQuoteResult =
@@ -74,7 +96,8 @@ async function fetchBalance(): Promise<BalanceResult> {
       ok: true,
       balanceMicros: parsed.data.balanceMicros,
       freeCreditMicros: parsed.data.freeCreditMicros,
-      walletAddress: parsed.data.walletAddress ?? null
+      walletAddress: parsed.data.walletAddress ?? null,
+      activePlan: parsed.data.activePlan ?? null
     }
   } catch (e) {
     return { ok: false, error: (e as Error).message }

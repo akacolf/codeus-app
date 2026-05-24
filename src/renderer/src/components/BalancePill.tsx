@@ -7,6 +7,7 @@ export function BalancePill(): React.JSX.Element {
   const balanceMicros = useBillingStore((s) => s.balanceMicros)
   const freeCreditMicros = useBillingStore((s) => s.freeCreditMicros)
   const loading = useBillingStore((s) => s.loading)
+  const activePlan = useBillingStore((s) => s.activePlan)
   const refresh = useBillingStore((s) => s.refresh)
   const openTopup = useBillingStore((s) => s.openTopup)
 
@@ -34,7 +35,7 @@ export function BalancePill(): React.JSX.Element {
       type="button"
       onClick={() => openTopup()}
       aria-label="Balance — click to top up"
-      title="Balance"
+      title={activePlan ? `Balance · ${activePlan.planId}` : 'Balance'}
       style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       className={cn(
         'inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors',
@@ -43,6 +44,7 @@ export function BalancePill(): React.JSX.Element {
       )}
     >
       <Wallet className="size-[14px]" />
+      {activePlan ? <span className="hidden uppercase sm:inline">{activePlan.planId}</span> : null}
       <span className="tabular-nums">{formatBalance(total)}</span>
     </button>
   )

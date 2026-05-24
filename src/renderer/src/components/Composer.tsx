@@ -3,6 +3,7 @@ import {
   ArrowUp,
   Check,
   ChevronDown,
+  CornerDownLeft,
   Mic,
   Paperclip,
   PencilLine,
@@ -26,6 +27,7 @@ import {
   type PermissionId
 } from '@renderer/lib/settings'
 import { getUsage, subscribeUsage, type UsageSnapshot } from '@renderer/lib/usage'
+import type { CommandApproval } from '@renderer/lib/chat'
 
 // Soft daily cap used to draw the ring. Research-preview accounts share a
 // pool, so this is a guidance bar, not a hard quota — when the proxy starts
@@ -55,6 +57,17 @@ interface ComposerProps {
   // textarea, so we drop it under the caret; Thread's composer is pinned to
   // the bottom of the viewport, so it has to open upward.
   mentionPlacement?: 'above' | 'below'
+  reviewSummary?: {
+    fileCount: number
+    additions: number
+    removals: number
+    onReview: () => void
+  } | null
+  commandApproval?: {
+    approval: CommandApproval
+    queuedCount: number
+    onRespond: (decision: { approved: boolean; remember?: boolean; instruction?: string }) => void
+  } | null
 }
 
 const PERMISSION_ICONS: Record<PermissionId, React.ComponentType<{ className?: string }>> = {
@@ -75,7 +88,9 @@ export function Composer({
   placeholder,
   autoFocus,
   streamingStop,
-  mentionPlacement = 'above'
+  mentionPlacement = 'above',
+  reviewSummary,
+  commandApproval
 }: ComposerProps): React.JSX.Element {
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [listening, setListening] = useState(false)
@@ -95,7 +110,8 @@ export function Composer({
   const model = modelById(settings.model)
   const permission = permissionById(settings.permission)
   const PermissionIcon = PERMISSION_ICONS[settings.permission]
-  const canSend = draft.trim().length > 0 || attachments.length > 0
+  const approvalPending = !!commandApproval
+  const canSend = !approvalPending && (draft.trim().length > 0 || attachments.length > 0)
   const speechAvailable = getSpeechRecognition() !== null
   const showStop = !!streamingStop
   const composerSize = settings.composerSize
@@ -311,12 +327,44 @@ export function Composer({
           placement={mentionPlacement}
         />
       )}
+      {reviewSummary && (
+        <div className="mx-10 -mb-1 flex h-11 items-center justify-between rounded-t-3xl bg-input px-5 text-sm text-muted-foreground">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              reviewSummary.onReview()
+            }}
+            className="inline-flex min-w-0 items-center gap-2 text-left"
+          >
+            <span className="truncate">
+              {reviewSummary.fileCount} file{reviewSummary.fileCount === 1 ? '' : 's'} changed
+            </span>
+            <span className="shrink-0 tabular-nums">
+              <span className="text-emerald-400">+{reviewSummary.additions.toLocaleString()}</span>{' '}
+              <span className="text-red-400">-{reviewSummary.removals.toLocaleString()}</span>
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              reviewSummary.onReview()
+            }}
+            className="shrink-0 text-foreground transition-colors hover:text-foreground/75"
+          >
+            Review here
+          </button>
+        </div>
+      )}
       <div
         className={cn(
           'w-full bg-input',
           composerSize === 'compact' ? 'rounded-2xl' : 'rounded-3xl'
         )}
-        onClick={() => textareaRef.current?.focus()}
+        onClick={() => {
+          if (!approvalPending) textareaRef.current?.focus()
+        }}
       >
         <input
           ref={fileRef}
@@ -328,184 +376,281 @@ export function Composer({
           tabIndex={-1}
         />
 
-        {attachments.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 px-4 pt-3" onClick={(e) => e.stopPropagation()}>
-            {attachments.map((a, i) => (
-              <button
-                key={`${a.name}-${i}`}
-                type="button"
-                onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
-                className="inline-flex max-w-[16rem] items-center gap-1.5 truncate rounded-full bg-foreground/8 px-2.5 py-1 text-xs text-foreground/85 hover:bg-foreground/12"
-                title={a.truncated ? `${a.name} — truncated` : `${a.name} — remove`}
+        {approvalPending && commandApproval ? (
+          <ApprovalPrompt
+            approval={commandApproval.approval}
+            queuedCount={commandApproval.queuedCount}
+            onRespond={commandApproval.onRespond}
+          />
+        ) : (
+          <>
+            {attachments.length > 0 && (
+              <div
+                className="flex flex-wrap gap-1.5 px-4 pt-3"
+                onClick={(e) => e.stopPropagation()}
               >
-                <Paperclip className="size-3" />
-                <span className="truncate">{a.name}</span>
-                <span className="text-muted-foreground">×</span>
-              </button>
-            ))}
-          </div>
-        )}
+                {attachments.map((a, i) => (
+                  <button
+                    key={`${a.name}-${i}`}
+                    type="button"
+                    onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
+                    className="inline-flex max-w-[16rem] items-center gap-1.5 truncate rounded-full bg-foreground/8 px-2.5 py-1 text-xs text-foreground/85 hover:bg-foreground/12"
+                    title={a.truncated ? `${a.name} — truncated` : `${a.name} — remove`}
+                  >
+                    <Paperclip className="size-3" />
+                    <span className="truncate">{a.name}</span>
+                    <span className="text-muted-foreground">×</span>
+                  </button>
+                ))}
+              </div>
+            )}
 
-        <textarea
-          ref={textareaRef}
-          autoFocus={autoFocus}
-          value={draft}
-          onChange={(e) => {
-            onDraftChange(e.target.value)
-            syncMention(e.target.value, e.target.selectionStart ?? e.target.value.length)
-          }}
-          onSelect={(e) => {
-            const t = e.currentTarget
-            syncMention(t.value, t.selectionStart ?? t.value.length)
-          }}
-          onBlur={() => setMention(null)}
-          onKeyDown={onKey}
-          placeholder={placeholder ?? 'Ask QC Codeus anything.  @ to mention files'}
-          rows={1}
-          className={cn(
-            'block w-full resize-none bg-transparent text-sm leading-relaxed outline-none placeholder:text-muted-foreground',
-            composerSize === 'compact'
-              ? 'px-5 pt-3 pb-0'
-              : composerSize === 'large'
-                ? 'px-7 pt-5 pb-2'
-                : 'px-6 pt-4 pb-1'
-          )}
-          style={{
-            minHeight: composerSize === 'compact' ? 48 : composerSize === 'large' ? 68 : 56
-          }}
-        />
-
-        <div
-          className={cn(
-            'flex items-center justify-between gap-2 px-3',
-            composerSize === 'compact' ? 'pb-2' : composerSize === 'large' ? 'pb-4' : 'pb-3'
-          )}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex items-center gap-1">
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              className="text-muted-foreground hover:text-foreground"
-              aria-label="Attach file"
-              onClick={(e) => {
-                e.stopPropagation()
-                fileRef.current?.click()
+            <textarea
+              ref={textareaRef}
+              autoFocus={autoFocus}
+              value={draft}
+              onChange={(e) => {
+                onDraftChange(e.target.value)
+                syncMention(e.target.value, e.target.selectionStart ?? e.target.value.length)
               }}
+              onSelect={(e) => {
+                const t = e.currentTarget
+                syncMention(t.value, t.selectionStart ?? t.value.length)
+              }}
+              onBlur={() => setMention(null)}
+              onKeyDown={onKey}
+              placeholder={placeholder ?? 'Ask QC Codeus anything.  @ to mention files'}
+              rows={1}
+              className={cn(
+                'block w-full resize-none bg-transparent text-sm leading-relaxed outline-none placeholder:text-muted-foreground',
+                composerSize === 'compact'
+                  ? 'px-5 pt-3 pb-0'
+                  : composerSize === 'large'
+                    ? 'px-7 pt-5 pb-2'
+                    : 'px-6 pt-4 pb-1'
+              )}
+              style={{
+                minHeight: composerSize === 'compact' ? 48 : composerSize === 'large' ? 68 : 56
+              }}
+            />
+
+            <div
+              className={cn(
+                'flex items-center justify-between gap-2 px-3',
+                composerSize === 'compact' ? 'pb-2' : composerSize === 'large' ? 'pb-4' : 'pb-3'
+              )}
+              onClick={(e) => e.stopPropagation()}
             >
-              <Plus />
-            </Button>
-
-            <Popover open={permissionOpen} onOpenChange={setPermissionOpen}>
-              <PopoverTrigger asChild>
-                <PillButton onClick={(e) => e.stopPropagation()}>
-                  <PermissionIcon className="size-3.5" />
-                  <span className="truncate">{permission.label}</span>
-                  <ChevronDown className="size-3.5 opacity-70" />
-                </PillButton>
-              </PopoverTrigger>
-              <PopoverContent align="start" className="w-48">
-                <OptionList
-                  items={PERMISSIONS.map((p) => ({
-                    id: p.id,
-                    label: p.label,
-                    icon: PERMISSION_ICONS[p.id]
-                  }))}
-                  selectedId={settings.permission}
-                  onSelect={(id) => {
-                    set('permission', id as PermissionId)
-                    setPermissionOpen(false)
+              <div className="flex items-center gap-1">
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  className="text-muted-foreground hover:text-foreground"
+                  aria-label="Attach file"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    fileRef.current?.click()
                   }}
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
-
-          <div className="flex items-center gap-1">
-            <Popover open={usageOpen} onOpenChange={setUsageOpen}>
-              <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  aria-label="Usage remaining today"
-                  onClick={(e) => e.stopPropagation()}
-                  className="inline-flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground data-[state=open]:bg-foreground/8 data-[state=open]:text-foreground"
                 >
-                  <UsageRing />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-56">
-                <UsageReadout />
-              </PopoverContent>
-            </Popover>
+                  <Plus />
+                </Button>
 
-            <Popover open={modelOpen} onOpenChange={setModelOpen}>
-              <PopoverTrigger asChild>
-                <PillButton onClick={(e) => e.stopPropagation()}>
-                  <span className="truncate">{model.label}</span>
-                  <ChevronDown className="size-3.5 opacity-70" />
-                </PillButton>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-64">
-                <OptionList
-                  items={MODELS.map((m) => ({
-                    id: m.id,
-                    label: m.label,
-                    hint: m.hint
-                  }))}
-                  selectedId={settings.model}
-                  onSelect={(id) => {
-                    set('model', id as ModelId)
-                    setModelOpen(false)
-                  }}
-                />
-              </PopoverContent>
-            </Popover>
+                <Popover open={permissionOpen} onOpenChange={setPermissionOpen}>
+                  <PopoverTrigger asChild>
+                    <PillButton onClick={(e) => e.stopPropagation()}>
+                      <PermissionIcon className="size-3.5" />
+                      <span className="truncate">{permission.label}</span>
+                      <ChevronDown className="size-3.5 opacity-70" />
+                    </PillButton>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-48">
+                    <OptionList
+                      items={PERMISSIONS.map((p) => ({
+                        id: p.id,
+                        label: p.label,
+                        icon: PERMISSION_ICONS[p.id]
+                      }))}
+                      selectedId={settings.permission}
+                      onSelect={(id) => {
+                        set('permission', id as PermissionId)
+                        setPermissionOpen(false)
+                      }}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
 
-            {speechAvailable && (
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  toggleMic()
-                }}
-                aria-label={listening ? 'Stop voice input' : 'Start voice input'}
-                aria-pressed={listening}
-                className={cn(
-                  'text-muted-foreground hover:text-foreground',
-                  listening && 'text-foreground'
+              <div className="flex items-center gap-1">
+                <Popover open={usageOpen} onOpenChange={setUsageOpen}>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label="Usage remaining today"
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground data-[state=open]:bg-foreground/8 data-[state=open]:text-foreground"
+                    >
+                      <UsageRing />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-56">
+                    <UsageReadout />
+                  </PopoverContent>
+                </Popover>
+
+                <Popover open={modelOpen} onOpenChange={setModelOpen}>
+                  <PopoverTrigger asChild>
+                    <PillButton onClick={(e) => e.stopPropagation()}>
+                      <span className="truncate">{model.label}</span>
+                      <ChevronDown className="size-3.5 opacity-70" />
+                    </PillButton>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-64">
+                    <OptionList
+                      items={MODELS.map((m) => ({
+                        id: m.id,
+                        label: m.label,
+                        hint: m.hint
+                      }))}
+                      selectedId={settings.model}
+                      onSelect={(id) => {
+                        set('model', id as ModelId)
+                        setModelOpen(false)
+                      }}
+                    />
+                  </PopoverContent>
+                </Popover>
+
+                {speechAvailable && (
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggleMic()
+                    }}
+                    aria-label={listening ? 'Stop voice input' : 'Start voice input'}
+                    aria-pressed={listening}
+                    className={cn(
+                      'text-muted-foreground hover:text-foreground',
+                      listening && 'text-foreground'
+                    )}
+                  >
+                    <Mic className={cn(listening && 'animate-pulse')} />
+                  </Button>
                 )}
-              >
-                <Mic className={cn(listening && 'animate-pulse')} />
-              </Button>
-            )}
-            {showStop ? (
-              <Button
-                size="icon-sm"
-                variant="default"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  streamingStop?.()
-                }}
-                aria-label="Stop generating"
-              >
-                <Square className="fill-current" />
-              </Button>
-            ) : (
-              <Button
-                size="icon-sm"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  send()
-                }}
-                disabled={!canSend}
-                aria-label="Send"
-              >
-                <ArrowUp />
-              </Button>
-            )}
+                {showStop ? (
+                  <Button
+                    size="icon-sm"
+                    variant="default"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      streamingStop?.()
+                    }}
+                    aria-label="Stop generating"
+                  >
+                    <Square className="fill-current" />
+                  </Button>
+                ) : (
+                  <Button
+                    size="icon-sm"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      send()
+                    }}
+                    disabled={!canSend}
+                    aria-label="Send"
+                  >
+                    <ArrowUp />
+                  </Button>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ApprovalPrompt({
+  approval,
+  queuedCount,
+  onRespond
+}: {
+  approval: CommandApproval
+  queuedCount: number
+  onRespond: (decision: { approved: boolean; remember?: boolean; instruction?: string }) => void
+}): React.JSX.Element {
+  const [active, setActive] = useState(0)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const command = [approval.command, ...approval.args].filter(Boolean).join(' ')
+  const choices = [
+    {
+      label: 'Approve',
+      hint: 'Run this command once.',
+      respond: () => onRespond({ approved: true })
+    },
+    {
+      label: 'Approve all in this turn',
+      hint: 'Do not ask again for queued commands in this reply.',
+      respond: () => onRespond({ approved: true, remember: true })
+    },
+    {
+      label: 'Deny',
+      hint: 'Tell the agent this command was not approved.',
+      respond: () => onRespond({ approved: false })
+    }
+  ]
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActive((i) => (i + 1) % choices.length)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActive((i) => (i - 1 + choices.length) % choices.length)
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      choices[active].respond()
+    }
+  }
+
+  useEffect(() => {
+    panelRef.current?.focus()
+  }, [approval.approvalId])
+
+  return (
+    <div ref={panelRef} tabIndex={0} onKeyDown={onKeyDown} className="px-4 py-4 text-sm">
+      <div className="flex items-start gap-2">
+        <Shield className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        <div className="min-w-0 flex-1">
+          <div className="text-foreground/90">Command permission</div>
+          <div className="mt-1 truncate font-mono text-xs text-foreground/75">{command}</div>
+          <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+            cwd: {approval.cwd}
+            {queuedCount > 0 ? ` · ${queuedCount} more queued` : ''}
           </div>
         </div>
+      </div>
+      <div className="mt-3 flex flex-col gap-1">
+        {choices.map((choice, i) => (
+          <button
+            key={choice.label}
+            type="button"
+            onMouseEnter={() => setActive(i)}
+            onClick={choice.respond}
+            className={cn(
+              'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors',
+              active === i ? 'bg-foreground/10 text-foreground' : 'text-muted-foreground'
+            )}
+          >
+            <CornerDownLeft className={cn('size-3.5 shrink-0', active !== i && 'opacity-0')} />
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate text-sm">{choice.label}</span>
+              <span className="truncate text-[11px] text-muted-foreground">{choice.hint}</span>
+            </span>
+          </button>
+        ))}
       </div>
     </div>
   )

@@ -50,6 +50,16 @@ describe('chatStore — navigation', () => {
     useChatStore.getState().forward()
     expect(useChatStore.getState().index).toBe(1)
   })
+
+  it('editor opens and closes through history', () => {
+    useChatStore.getState().openEditor()
+    let s = useChatStore.getState()
+    expect(s.history[s.index].type).toBe('editor')
+
+    useChatStore.getState().closeEditor()
+    s = useChatStore.getState()
+    expect(s.history[s.index].type).toBe('home')
+  })
 })
 
 describe('chatStore — CRUD', () => {

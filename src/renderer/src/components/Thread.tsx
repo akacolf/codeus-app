@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Copy,
   ExternalLink,
+  FileDiff,
   FileText,
   Loader2,
   Pencil,
@@ -17,17 +18,10 @@ import {
   ThumbsDown,
   ThumbsUp,
   TriangleAlert,
+  Undo2,
   X
 } from 'lucide-react'
 import { FileIcon } from './FileIcon'
-import type {
-  Chat,
-  CommandApproval,
-  Message,
-  MessagePart,
-  TextPart,
-  ToolPart
-} from '@renderer/lib/chat'
 import { cn } from '@renderer/lib/utils'
 import { Button } from '@renderer/components/ui/button'
 import {
@@ -37,6 +31,7 @@ import {
   DropdownMenuTrigger
 } from '@renderer/components/ui/dropdown-menu'
 import { useSettings } from '@renderer/lib/settings'
+import type { Chat, Message, MessagePart, TextPart, ToolPart } from '@renderer/lib/chat'
 import { useChatStore, type ChatSettingsSnapshot } from '@renderer/stores/chatStore'
 import { useWorkspaceStore } from '@renderer/stores/workspaceStore'
 import { Composer } from './Composer'
@@ -73,6 +68,8 @@ export function Thread({
   const retryAfterError = useChatStore((s) => s.retryAfterError)
   const cancelQueued = useChatStore((s) => s.cancelQueued)
   const respondToCommandApproval = useChatStore((s) => s.respondToCommandApproval)
+  const openEditor = useChatStore((s) => s.openEditor)
+  const reviewChanges = useWorkspaceStore((s) => s.reviewChanges)
   const queued = useChatStore((s) => s.queued[chat.id]) ?? []
   const commandApprovals = chat.commandApprovals ?? []
   const { settings: uiSettings } = useSettings()
@@ -148,6 +145,24 @@ export function Thread({
   const handleEdit = (messageId: string, text: string): void =>
     editUserMessage(chat.id, messageId, text, settings)
   const handleRetry = (): void => retryAfterError(chat.id, settings)
+  const latestChanges = latestFileChanges(chat)
+  const reviewChange = (change = latestChanges[0]): void => {
+    if (!change) return
+    openEditor()
+    void reviewChanges(change.path, {
+      addedRanges: change.addedRanges,
+      removedRanges: change.removedRanges
+    })
+  }
+  const reviewSummary =
+    latestChanges.length > 0
+      ? {
+          fileCount: latestChanges.length,
+          additions: latestChanges.reduce((sum, c) => sum + c.additions, 0),
+          removals: latestChanges.reduce((sum, c) => sum + c.removals, 0),
+          onReview: () => reviewChange()
+        }
+      : null
 
   return (
     <div className="relative flex h-full w-full flex-col">
@@ -162,6 +177,7 @@ export function Thread({
               isStreaming={m.id === chat.streamingMessageId}
               onEdit={(text) => handleEdit(m.id, text)}
               onRegenerate={() => handleRegenerate(m.id)}
+              onReviewChange={reviewChange}
             />
           ))}
           {chat.error && (
@@ -222,118 +238,26 @@ export function Thread({
               ))}
             </div>
           )}
-          {commandApprovals.length > 0 && (
-            <div className="flex w-full flex-col gap-2 rounded-2xl bg-card/95 p-3 text-xs shadow-lg backdrop-blur">
-              {/* Surface one command at a time. Answering the first reveals the
-                  next, so the user reviews each decision in turn. */}
-              <CommandApprovalCard
-                key={commandApprovals[0].approvalId}
-                approval={commandApprovals[0]}
-                onRespond={(decision) =>
-                  respondToCommandApproval(chat.id, commandApprovals[0].approvalId, decision)
-                }
-              />
-              {commandApprovals.length > 1 && (
-                <div className="pl-7 text-[11px] text-muted-foreground">
-                  {commandApprovals.length - 1} more command
-                  {commandApprovals.length - 1 === 1 ? '' : 's'} queued
-                </div>
-              )}
-            </div>
-          )}
           <Composer
             draft={draft}
             onDraftChange={onDraftChange}
             onSubmit={onSubmit}
             autoFocus
             streamingStop={streaming ? () => stopStreaming(chat.id) : null}
+            reviewSummary={reviewSummary}
+            commandApproval={
+              commandApprovals.length > 0
+                ? {
+                    approval: commandApprovals[0],
+                    queuedCount: commandApprovals.length - 1,
+                    onRespond: (decision) =>
+                      respondToCommandApproval(chat.id, commandApprovals[0].approvalId, decision)
+                  }
+                : null
+            }
           />
         </div>
       </div>
-    </div>
-  )
-}
-
-function CommandApprovalCard({
-  approval,
-  onRespond
-}: {
-  approval: CommandApproval
-  onRespond: (decision: { approved: boolean; remember?: boolean; instruction?: string }) => void
-}): React.JSX.Element {
-  const [declining, setDeclining] = useState(false)
-  const [instruction, setInstruction] = useState('')
-  const command = formatCommand(approval.command, approval.args)
-
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-start gap-2">
-        <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-foreground/8 text-muted-foreground">
-          <Terminal className="size-3.5" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="text-[13px] text-foreground/90">Run command?</div>
-          <div className="mt-1 truncate font-mono text-[12px] text-foreground/75">{command}</div>
-          <div className="mt-0.5 text-[11px] text-muted-foreground">cwd: {approval.cwd}</div>
-        </div>
-      </div>
-      {!declining ? (
-        <div className="flex flex-wrap items-center gap-1.5 pl-7">
-          <Button size="xs" onClick={() => onRespond({ approved: true })}>
-            Yes
-          </Button>
-          <Button
-            size="xs"
-            variant="ghost"
-            onClick={() => onRespond({ approved: true, remember: true })}
-          >
-            yes and dont ask for this session again
-          </Button>
-          <Button size="xs" variant="ghost" onClick={() => setDeclining(true)}>
-            No
-          </Button>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2 pl-7">
-          <div className="flex items-center gap-1.5">
-            <span className="text-[13px] text-foreground/85">No,</span>
-            <input
-              value={instruction}
-              onChange={(e) => setInstruction(e.target.value)}
-              placeholder="and tell what the agent to do differently"
-              autoFocus
-              className="min-w-0 flex-1 rounded-md bg-foreground/6 px-2.5 py-1.5 text-[13px] text-foreground outline-none placeholder:text-muted-foreground"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  onRespond({ approved: false, instruction: instruction.trim() })
-                }
-                if (e.key === 'Escape') {
-                  setDeclining(false)
-                  setInstruction('')
-                }
-              }}
-            />
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Button
-              size="xs"
-              onClick={() => onRespond({ approved: false, instruction: instruction.trim() })}
-            >
-              Execute
-            </Button>
-            <Button
-              size="xs"
-              variant="ghost"
-              onClick={() => {
-                setDeclining(false)
-                setInstruction('')
-              }}
-            >
-              Back
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
@@ -342,12 +266,14 @@ function MessageBubble({
   message,
   isStreaming,
   onEdit,
-  onRegenerate
+  onRegenerate,
+  onReviewChange
 }: {
   message: Message
   isStreaming: boolean
   onEdit: (text: string) => void
   onRegenerate: () => void
+  onReviewChange: (change?: FileChangeRef) => void
 }): React.JSX.Element {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.text)
@@ -427,13 +353,20 @@ function MessageBubble({
         ? [{ kind: 'text' as const, text: message.text }]
         : []
 
+  const changes = extractFileChanges(message.parts)
   const refs = extractReferencedFiles(message.parts)
   const split = splitChainAndFinal(parts)
 
   return (
     <div className="group flex max-w-[85%] flex-col gap-2 self-start">
       <div className="flex flex-col gap-3 text-sm leading-relaxed text-foreground/90">
-        {split.chain.length > 0 && <WorkRollup chain={split.chain} isStreaming={isStreaming} />}
+        {split.chain.length > 0 && (
+          <WorkRollup
+            chain={split.chain}
+            isStreaming={isStreaming}
+            onReviewChange={onReviewChange}
+          />
+        )}
         {split.final && (
           <div>
             <Markdown text={split.final.text} />
@@ -447,7 +380,10 @@ function MessageBubble({
         )}
         {isStreaming && parts.length === 0 && <ThinkingIndicator />}
       </div>
-      {!isStreaming && refs.length > 0 && <FileReferences refs={refs} />}
+      {!isStreaming && changes.length > 0 && (
+        <ChangeSummary changes={changes} onReviewChange={onReviewChange} />
+      )}
+      {!isStreaming && changes.length === 0 && refs.length > 0 && <FileReferences refs={refs} />}
       {!isStreaming && message.text.length > 0 && (
         <div className="flex items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
           <CopyAction text={message.text} />
@@ -536,25 +472,31 @@ function splitChainAndFinal(parts: MessagePart[]): {
   }
 }
 
-// Sum elapsed time across all tool calls. While a tool is still running we
-// extrapolate from its startedAt so the live timer ticks against wall clock,
-// not stale durationMs. Falls back to the stream start if no tools have begun.
+// Show wall-clock work time across the tool chain. Summing individual tool
+// durations makes the label stall between calls, then jump by multiple seconds.
 function computeWorkedMs(chain: MessagePart[], now: number): number {
-  let total = 0
+  let firstStart: number | null = null
+  let lastEnd: number | null = null
+  let hasRunning = false
   for (const p of chain) {
     if (p.kind !== 'tool') continue
-    if (p.status === 'running') total += Math.max(0, now - p.startedAt)
-    else if (p.durationMs !== undefined) total += p.durationMs
+    firstStart = firstStart === null ? p.startedAt : Math.min(firstStart, p.startedAt)
+    if (p.status === 'running') hasRunning = true
+    const end = p.durationMs !== undefined ? p.startedAt + p.durationMs : p.startedAt
+    lastEnd = lastEnd === null ? end : Math.max(lastEnd, end)
   }
-  return total
+  if (firstStart === null) return 0
+  return Math.max(0, (hasRunning ? now : (lastEnd ?? now)) - firstStart)
 }
 
 function WorkRollup({
   chain,
-  isStreaming
+  isStreaming,
+  onReviewChange
 }: {
   chain: MessagePart[]
   isStreaming: boolean
+  onReviewChange: (change?: FileChangeRef) => void
 }): React.JSX.Element {
   // Default open while streaming so the user can watch progress; once the
   // stream completes, collapse so the final response stands alone. `override`
@@ -576,6 +518,7 @@ function WorkRollup({
   const running = chain.find((p) => p.kind === 'tool' && p.status === 'running') as
     | ToolPart
     | undefined
+  const changes = extractFileChanges(chain)
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -616,6 +559,14 @@ function WorkRollup({
               <ActionChip key={p.toolCallId} tool={p} />
             )
           )}
+          {changes.length > 0 && (
+            <ChangeSummary
+              changes={changes}
+              onReviewChange={onReviewChange}
+              compact
+              live={isStreaming}
+            />
+          )}
         </div>
       )}
     </div>
@@ -631,12 +582,22 @@ function ToolIcon({ name }: { name: string }): React.JSX.Element {
   return <Terminal className={className} />
 }
 
+function statsFromTool(tool: ToolPart): { additions: number; removals: number } | null {
+  if (tool.name !== 'write_file') return null
+  const source = (tool.result ?? tool.args) as { additions?: unknown; removals?: unknown } | null
+  const additions = typeof source?.additions === 'number' ? source.additions : null
+  const removals = typeof source?.removals === 'number' ? source.removals : null
+  if (additions === null && removals === null) return null
+  return { additions: additions ?? 0, removals: removals ?? 0 }
+}
+
 function ActionChip({ tool }: { tool: ToolPart }): React.JSX.Element {
   const [userOverride, setUserOverride] = useState<boolean | null>(null)
   const isError = tool.status === 'error'
   const isRunning = tool.status === 'running'
   const hasLiveOutput = isRunning && !!(tool.stdoutLive || tool.stderrLive)
   const label = toolLabel(tool)
+  const stats = statsFromTool(tool)
   const hasDetails =
     tool.args !== undefined ||
     tool.result !== undefined ||
@@ -669,6 +630,12 @@ function ActionChip({ tool }: { tool: ToolPart }): React.JSX.Element {
           )}
         </span>
         <span className="truncate">{label}</span>
+        {stats && (
+          <span className="shrink-0 tabular-nums">
+            <span className="text-emerald-400">+{stats.additions.toLocaleString()}</span>{' '}
+            <span className="text-red-400">-{stats.removals.toLocaleString()}</span>
+          </span>
+        )}
         {hasDetails && (
           <ChevronRight
             aria-hidden
@@ -716,11 +683,19 @@ function buildDetailRows(tool: ToolPart): DetailRow[] {
       if (tool.status === 'error') {
         return [{ verb: 'Failed', target: path || 'file', muted: true }]
       }
-      const result = tool.result as { bytes?: number } | undefined
+      const result = tool.result as
+        | { bytes?: number; additions?: number; removals?: number }
+        | undefined
       const size =
         typeof args.content === 'string' ? args.content.length : (result?.bytes ?? undefined)
       return [
         { verb: 'Wrote', target: path || 'file' },
+        ...(typeof result?.additions === 'number'
+          ? [{ verb: 'Added', target: `+${result.additions.toLocaleString()}`, muted: true }]
+          : []),
+        ...(typeof result?.removals === 'number'
+          ? [{ verb: 'Removed', target: `-${result.removals.toLocaleString()}`, muted: true }]
+          : []),
         ...(size !== undefined
           ? [{ verb: 'Size', target: `${size.toLocaleString()} chars`, muted: true }]
           : [])
@@ -852,11 +827,11 @@ function CommandOutput({
 }
 
 function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`
-  const seconds = ms / 1000
-  if (seconds < 60) return `${seconds.toFixed(1)}s`
+  if (ms < 1000) return '<1s'
+  const seconds = Math.floor(ms / 1000)
+  if (seconds < 60) return `${seconds}s`
   const m = Math.floor(seconds / 60)
-  const s = Math.round(seconds % 60)
+  const s = seconds % 60
   return `${m}m ${s}s`
 }
 
@@ -880,6 +855,107 @@ export type FileRefStatus = 'created' | 'modified' | 'read'
 export interface FileRef {
   path: string
   status: FileRefStatus
+}
+
+export interface FileChangeRef {
+  path: string
+  status: Exclude<FileRefStatus, 'read'>
+  additions: number
+  removals: number
+  addedRanges: Array<{ startLine: number; endLine: number }>
+  removedRanges: Array<{ startLine: number; endLine: number }>
+  running: boolean
+  undoToken?: string
+}
+
+function linesInText(text: string): number {
+  if (text.length === 0) return 0
+  const lines = text.split(/\r\n|\n|\r/)
+  return lines[lines.length - 1] === '' ? lines.length - 1 : lines.length
+}
+
+function writeStats(tool: ToolPart): Omit<FileChangeRef, 'path' | 'running'> | null {
+  const result = tool.result as
+    | {
+        created?: boolean
+        additions?: number
+        removals?: number
+        addedRanges?: Array<{ startLine: number; endLine: number }>
+        removedRanges?: Array<{ startLine: number; endLine: number }>
+        undoToken?: string
+      }
+    | undefined
+  const args = (tool.args ?? {}) as {
+    created?: boolean
+    additions?: number
+    removals?: number
+    addedRanges?: Array<{ startLine: number; endLine: number }>
+    removedRanges?: Array<{ startLine: number; endLine: number }>
+    content?: string
+  }
+  const created = result?.created ?? args.created ?? false
+  const additions =
+    typeof result?.additions === 'number'
+      ? result.additions
+      : typeof args.additions === 'number'
+        ? args.additions
+        : created && typeof args.content === 'string'
+          ? linesInText(args.content)
+          : 0
+  const removals =
+    typeof result?.removals === 'number'
+      ? result.removals
+      : typeof args.removals === 'number'
+        ? args.removals
+        : 0
+  return {
+    status: created ? 'created' : 'modified',
+    additions,
+    removals,
+    addedRanges:
+      result?.addedRanges ??
+      args.addedRanges ??
+      (created && additions > 0 ? [{ startLine: 1, endLine: additions }] : []),
+    removedRanges: result?.removedRanges ?? args.removedRanges ?? [],
+    undoToken: result?.undoToken
+  }
+}
+
+function extractFileChanges(parts: MessagePart[] | undefined): FileChangeRef[] {
+  if (!parts) return []
+  const order = new Map<string, number>()
+  const changes = new Map<string, FileChangeRef>()
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i]
+    if (p.kind !== 'tool' || p.name !== 'write_file' || p.status === 'error') continue
+    const args = (p.args ?? {}) as { path?: string }
+    if (typeof args.path !== 'string' || args.path.length === 0) continue
+    const stats = writeStats(p)
+    if (!stats) continue
+    if (!order.has(args.path)) order.set(args.path, i)
+    const prev = changes.get(args.path)
+    changes.set(args.path, {
+      path: args.path,
+      status: stats.status === 'created' || prev?.status === 'created' ? 'created' : 'modified',
+      additions: stats.additions,
+      removals: stats.removals,
+      addedRanges: stats.addedRanges,
+      removedRanges: stats.removedRanges,
+      running: p.status === 'running',
+      undoToken: prev?.undoToken ?? stats.undoToken
+    })
+  }
+  return [...changes.values()].sort((a, b) => (order.get(a.path) ?? 0) - (order.get(b.path) ?? 0))
+}
+
+function latestFileChanges(chat: Chat): FileChangeRef[] {
+  for (let i = chat.messages.length - 1; i >= 0; i--) {
+    const message = chat.messages[i]
+    if (message.role !== 'assistant') continue
+    const changes = extractFileChanges(message.parts)
+    if (changes.length > 0) return changes
+  }
+  return []
 }
 
 // Pull file paths touched by this assistant turn out of its tool parts.
@@ -945,6 +1021,147 @@ function describeFile(p: string): string {
   }
   const kind = map[ext] ?? ext.toUpperCase()
   return `${kind} · ${ext.toUpperCase()}`
+}
+
+function ChangeSummary({
+  changes,
+  onReviewChange,
+  compact = false,
+  live = false
+}: {
+  changes: FileChangeRef[]
+  onReviewChange: (change?: FileChangeRef) => void
+  compact?: boolean
+  live?: boolean
+}): React.JSX.Element {
+  const [expanded, setExpanded] = useState(false)
+  const [undoing, setUndoing] = useState(false)
+  const [undone, setUndone] = useState(false)
+  const [undoError, setUndoError] = useState<string | null>(null)
+  const visible = expanded ? changes : changes.slice(0, 3)
+  const hidden = Math.max(0, changes.length - visible.length)
+  const additions = changes.reduce((sum, c) => sum + c.additions, 0)
+  const removals = changes.reduce((sum, c) => sum + c.removals, 0)
+  const allCreated = changes.every((c) => c.status === 'created')
+  const undoTokens = changes
+    .map((c) => c.undoToken)
+    .filter((token): token is string => typeof token === 'string' && token.length > 0)
+  const uniqueUndoTokens = [...new Set(undoTokens)].reverse()
+  const canUndo = uniqueUndoTokens.length > 0 && !live && !undone
+  const title = `${live ? 'Editing' : allCreated ? 'Created' : 'Edited'} ${changes.length} file${
+    changes.length === 1 ? '' : 's'
+  }`
+
+  const undoChanges = async (): Promise<void> => {
+    if (!canUndo || undoing) return
+    setUndoing(true)
+    setUndoError(null)
+    for (const token of uniqueUndoTokens) {
+      const result = await window.api.chat.undoWrite(token)
+      if (!result.ok) {
+        setUndoError(result.error)
+        setUndoing(false)
+        return
+      }
+    }
+    setUndone(true)
+    setUndoing(false)
+    onReviewChange()
+  }
+
+  return (
+    <div
+      className={cn(
+        'overflow-hidden rounded-xl bg-foreground/4 text-sm text-foreground/90',
+        compact ? 'mt-1' : ''
+      )}
+    >
+      <div className="flex items-center gap-3 px-3 py-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-foreground/8">
+          <FileDiff className="size-5 text-foreground/85" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-medium text-foreground">{title}</div>
+          <button
+            type="button"
+            onClick={() => onReviewChange()}
+            className="group/total mt-0.5 inline-flex max-w-full items-center gap-1.5 text-left text-[13px] tabular-nums text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <span className="group-hover/total:hidden">
+              <span className="text-emerald-400">+{additions.toLocaleString()}</span>{' '}
+              <span className="text-red-400">-{removals.toLocaleString()}</span>
+            </span>
+            <span className="hidden truncate group-hover/total:inline">Review changes</span>
+            <ExternalLink className="hidden size-3 shrink-0 group-hover/total:block" />
+          </button>
+        </div>
+        {!compact && (
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              variant="ghost"
+              size="xs"
+              disabled={!canUndo || undoing}
+              onClick={() => void undoChanges()}
+              title={canUndo ? 'Undo these file writes' : 'Undo unavailable for this change'}
+              className="gap-1.5"
+            >
+              {undoing ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Undo2 className="size-3.5" />
+              )}
+              {undone ? 'Undone' : 'Undo'}
+            </Button>
+            <Button variant="ghost" size="xs" onClick={() => onReviewChange()} className="gap-1.5">
+              Review
+              <ExternalLink className="size-3.5" />
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {visible.length > 0 && (
+        <div className="flex flex-col bg-foreground/4">
+          {visible.map((change) => (
+            <button
+              key={change.path}
+              type="button"
+              onClick={() => onReviewChange(change)}
+              className="group/change flex min-w-0 items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-foreground/6"
+            >
+              <span className="min-w-0 flex-1 truncate text-foreground/90">{change.path}</span>
+              {change.status === 'created' && (
+                <span
+                  aria-label="New file"
+                  title="New file"
+                  className="size-1.5 shrink-0 rounded-full bg-sky-400"
+                />
+              )}
+              {change.running && <Loader2 className="size-3.5 shrink-0 animate-spin opacity-70" />}
+              <span className="shrink-0 tabular-nums">
+                <span className="text-emerald-400">+{change.additions.toLocaleString()}</span>{' '}
+                <span className="text-red-400">-{change.removals.toLocaleString()}</span>
+              </span>
+              <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/60 opacity-0 transition-opacity group-hover/change:opacity-100" />
+            </button>
+          ))}
+          {(hidden > 0 || expanded) && changes.length > 3 && (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="flex items-center gap-2 px-3 py-2 text-left text-foreground/85 transition-colors hover:bg-foreground/6"
+            >
+              {expanded ? 'Show fewer files' : `Show ${changes.length - 3} more files`}
+              <ChevronDown
+                className={cn('size-4 transition-transform', expanded && 'rotate-180')}
+              />
+            </button>
+          )}
+        </div>
+      )}
+      {undoError && <div className="px-3 py-2 text-xs text-destructive">{undoError}</div>}
+    </div>
+  )
 }
 
 function FileReferences({ refs }: { refs: FileRef[] }): React.JSX.Element {

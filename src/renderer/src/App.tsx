@@ -358,8 +358,7 @@ function App(): React.JSX.Element {
               <DialogDescription>Quantum Club’s research-preview agentic IDE.</DialogDescription>
             </DialogHeader>
             <p className="text-sm leading-relaxed text-foreground/85">
-              Built by Quantum Club. This is a research preview — agent execution, IPC streaming,
-              and the editor pane are still landing.
+              Built by Quantum Club for focused agentic software work.
             </p>
           </DialogContent>
         </Dialog>

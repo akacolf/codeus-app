@@ -20,6 +20,13 @@ interface BillingStore {
   balanceMicros: number | null
   freeCreditMicros: number | null
   walletAddress: string | null
+  activePlan: {
+    planId: string
+    status: 'active' | 'expired' | 'cancelled'
+    currentPeriodStart: string
+    currentPeriodEnd: string
+    monthlyCreditMicros: number
+  } | null
   loading: boolean
   lastError: string | null
 
@@ -38,6 +45,7 @@ export const useBillingStore = create<BillingStore>((set, get) => ({
   balanceMicros: null,
   freeCreditMicros: null,
   walletAddress: null,
+  activePlan: null,
   loading: false,
   lastError: null,
   topupOpen: false,
@@ -52,6 +60,7 @@ export const useBillingStore = create<BillingStore>((set, get) => ({
         balanceMicros: res.balanceMicros,
         freeCreditMicros: res.freeCreditMicros,
         walletAddress: res.walletAddress,
+        activePlan: res.activePlan,
         loading: false,
         lastError: null
       })

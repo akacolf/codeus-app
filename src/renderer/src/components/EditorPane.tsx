@@ -57,10 +57,13 @@ export function EditorPane({ file }: EditorPaneProps): React.JSX.Element {
   const setBuffer = useWorkspaceStore((s) => s.setBuffer)
   const saveActive = useWorkspaceStore((s) => s.saveActive)
   const pendingReveal = useWorkspaceStore((s) => s.pendingReveal)
+  const pendingReview = useWorkspaceStore((s) => s.pendingReview)
   const clearPendingReveal = useWorkspaceStore((s) => s.clearPendingReveal)
+  const clearPendingReview = useWorkspaceStore((s) => s.clearPendingReview)
   const { settings } = useSettings()
   const monacoRef = useRef<typeof MonacoNS | null>(null)
   const editorRef = useRef<MonacoNS.editor.IStandaloneCodeEditor | null>(null)
+  const reviewDecorationsRef = useRef<string[]>([])
   const language = useMemo(() => languageForPath(file.path), [file.path])
 
   // Handle citation reveals. We re-run when `seq` changes so clicking the same
@@ -76,6 +79,63 @@ export function EditorPane({ file }: EditorPaneProps): React.JSX.Element {
     editor.focus()
     clearPendingReveal(pendingReveal.path, pendingReveal.seq)
   }, [pendingReveal, file.path, clearPendingReveal])
+
+  useEffect(() => {
+    if (!pendingReview) return
+    if (pendingReview.path !== file.path) return
+    const editor = editorRef.current
+    const monaco = monacoRef.current
+    const model = editor?.getModel()
+    if (!editor || !monaco || !model) return
+
+    const clampLine = (line: number): number =>
+      Math.min(Math.max(1, line | 0), model.getLineCount())
+    const decorations: MonacoNS.editor.IModelDeltaDecoration[] = [
+      ...pendingReview.addedRanges.map((range) => ({
+        range: new monaco.Range(clampLine(range.startLine), 1, clampLine(range.endLine), 1),
+        options: {
+          isWholeLine: true,
+          className: 'qc-review-line-added',
+          linesDecorationsClassName: 'qc-review-gutter-added',
+          overviewRuler: {
+            color: '#39d98a',
+            position: monaco.editor.OverviewRulerLane.Left
+          }
+        }
+      })),
+      ...pendingReview.removedRanges.map((range) => ({
+        range: new monaco.Range(clampLine(range.startLine), 1, clampLine(range.endLine), 1),
+        options: {
+          isWholeLine: true,
+          className: 'qc-review-line-removed',
+          linesDecorationsClassName: 'qc-review-gutter-removed',
+          overviewRuler: {
+            color: '#ff5c5c',
+            position: monaco.editor.OverviewRulerLane.Left
+          }
+        }
+      }))
+    ]
+
+    reviewDecorationsRef.current = editor.deltaDecorations(
+      reviewDecorationsRef.current,
+      decorations
+    )
+    const first =
+      pendingReview.addedRanges[0]?.startLine ?? pendingReview.removedRanges[0]?.startLine ?? 1
+    editor.revealLineInCenter(clampLine(first))
+    editor.setPosition({ lineNumber: clampLine(first), column: 1 })
+    editor.focus()
+    clearPendingReview(pendingReview.path, pendingReview.seq)
+  }, [pendingReview, file.path, clearPendingReview])
+
+  useEffect(() => {
+    return () => {
+      const editor = editorRef.current
+      if (!editor) return
+      reviewDecorationsRef.current = editor.deltaDecorations(reviewDecorationsRef.current, [])
+    }
+  }, [file.path])
 
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor

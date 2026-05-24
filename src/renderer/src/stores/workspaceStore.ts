@@ -16,6 +16,18 @@ export interface OpenFile {
   error?: string
 }
 
+export interface ReviewLineRange {
+  startLine: number
+  endLine: number
+}
+
+export interface ReviewTarget {
+  path: string
+  addedRanges: ReviewLineRange[]
+  removedRanges: ReviewLineRange[]
+  seq: number
+}
+
 interface WorkspaceStore {
   open: OpenFile[]
   activePath: string | null
@@ -23,6 +35,7 @@ interface WorkspaceStore {
   // Latest "scroll/cursor here" request from a citation link. Bumps `seq` on
   // every call so EditorPane re-fires the reveal even when path+line repeat.
   pendingReveal: { path: string; line: number; seq: number } | null
+  pendingReview: ReviewTarget | null
 
   openFile: (path: string) => Promise<void>
   closeFile: (path: string) => void
@@ -31,7 +44,12 @@ interface WorkspaceStore {
   saveActive: () => Promise<void>
   toggleDir: (path: string) => void
   revealInEditor: (path: string, line: number) => Promise<void>
+  reviewChanges: (
+    path: string,
+    ranges: { addedRanges?: ReviewLineRange[]; removedRanges?: ReviewLineRange[] }
+  ) => Promise<void>
   clearPendingReveal: (path: string, seq: number) => void
+  clearPendingReview: (path: string, seq: number) => void
 }
 
 function isDirty(f: OpenFile): boolean {
@@ -44,6 +62,7 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
     activePath: null,
     expandedDirs: new Set<string>(['']),
     pendingReveal: null,
+    pendingReview: null,
 
     openFile: async (path) => {
       // Already open — just focus it.
@@ -123,11 +142,31 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
       }))
     },
 
+    reviewChanges: async (path, ranges) => {
+      await get().openFile(path)
+      set((s) => ({
+        pendingReview: {
+          path,
+          addedRanges: ranges.addedRanges ?? [],
+          removedRanges: ranges.removedRanges ?? [],
+          seq: (s.pendingReview?.seq ?? 0) + 1
+        }
+      }))
+    },
+
     clearPendingReveal: (path, seq) => {
       set((s) => {
         if (!s.pendingReveal) return s
         if (s.pendingReveal.path !== path || s.pendingReveal.seq !== seq) return s
         return { pendingReveal: null }
+      })
+    },
+
+    clearPendingReview: (path, seq) => {
+      set((s) => {
+        if (!s.pendingReview) return s
+        if (s.pendingReview.path !== path || s.pendingReview.seq !== seq) return s
+        return { pendingReview: null }
       })
     }
   }))

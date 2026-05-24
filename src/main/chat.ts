@@ -46,6 +46,7 @@ const StartParamsSchema = z.object({
 })
 
 const CancelParamsSchema = z.object({ requestId: z.string().min(1) })
+const UndoWriteParamsSchema = z.object({ token: z.string().min(1) })
 
 type StartParams = z.infer<typeof StartParamsSchema>
 
@@ -77,6 +78,10 @@ const inFlight = new Map<string, AbortController>()
 const pendingCommandApprovals = new Map<
   string,
   { requestId: string; finish: (decision: CommandApprovalDecision) => void }
+>()
+const writeUndoSnapshots = new Map<
+  string,
+  { root: string; path: string; existed: boolean; content: string | null }
 >()
 
 // "Approve all commands" is scoped to a single stream, not the whole app
@@ -156,10 +161,43 @@ function genApprovalId(): string {
   return `cmd-approval-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+function rememberWriteUndo(path: string, before: string | null): string {
+  const token = genToolCallId('undo')
+  writeUndoSnapshots.set(token, {
+    root: getActiveProjectCwd(),
+    path,
+    existed: before !== null,
+    content: before
+  })
+  while (writeUndoSnapshots.size > 50) {
+    const oldest = writeUndoSnapshots.keys().next().value
+    if (!oldest) break
+    writeUndoSnapshots.delete(oldest)
+  }
+  return token
+}
+
+async function undoWrite(token: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const snapshot = writeUndoSnapshots.get(token)
+  if (!snapshot) return { ok: false, error: 'undo expired' }
+  writeUndoSnapshots.delete(token)
+  try {
+    const abs = resolveInRoot(snapshot.root, snapshot.path)
+    if (snapshot.existed) {
+      await fs.mkdir(resolve(abs, '..'), { recursive: true })
+      await fs.writeFile(abs, snapshot.content ?? '', 'utf8')
+    } else {
+      await fs.unlink(abs)
+    }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: (e as Error).message }
+  }
+}
+
 // Resolve a project-relative path inside the active workspace, refusing any
 // path that escapes the root. Tools must never touch files outside the project.
-function resolveInProject(rel: string): string {
-  const root = getActiveProjectCwd()
+function resolveInRoot(root: string, rel: string): string {
   const norm = rel.replace(/\\/g, '/').replace(/^\/+/, '')
   const abs = resolve(root, norm)
   const fromRoot = relative(root, abs)
@@ -167,6 +205,10 @@ function resolveInProject(rel: string): string {
     throw new Error(`path escapes project root: ${rel}`)
   }
   return abs
+}
+
+function resolveInProject(rel: string): string {
+  return resolveInRoot(getActiveProjectCwd(), rel)
 }
 
 function displayPath(abs: string): string {
@@ -186,7 +228,148 @@ function appendCapped(
   return { text: next.slice(0, cap), truncated: true }
 }
 
+function textLines(text: string): string[] {
+  if (text.length === 0) return []
+  const lines = text.split(/\r\n|\n|\r/)
+  if (lines[lines.length - 1] === '') lines.pop()
+  return lines
+}
+
+interface LineRange {
+  startLine: number
+  endLine: number
+}
+
+interface LineChangeStats {
+  additions: number
+  removals: number
+  addedRanges: LineRange[]
+  removedRanges: LineRange[]
+}
+
+function pushRange(ranges: LineRange[], line: number): void {
+  const normalized = Math.max(1, line)
+  const last = ranges[ranges.length - 1]
+  if (last && last.endLine + 1 === normalized) {
+    last.endLine = normalized
+    return
+  }
+  ranges.push({ startLine: normalized, endLine: normalized })
+}
+
+function lineChangeStats(before: string, after: string): LineChangeStats {
+  if (before === after) {
+    return { additions: 0, removals: 0, addedRanges: [], removedRanges: [] }
+  }
+  const oldLines = textLines(before)
+  const newLines = textLines(after)
+
+  let start = 0
+  while (
+    start < oldLines.length &&
+    start < newLines.length &&
+    oldLines[start] === newLines[start]
+  ) {
+    start += 1
+  }
+
+  let oldEnd = oldLines.length - 1
+  let newEnd = newLines.length - 1
+  while (oldEnd >= start && newEnd >= start && oldLines[oldEnd] === newLines[newEnd]) {
+    oldEnd -= 1
+    newEnd -= 1
+  }
+
+  const oldMid = oldLines.slice(start, oldEnd + 1)
+  const newMid = newLines.slice(start, newEnd + 1)
+  const cells = oldMid.length * newMid.length
+  if (cells > 300_000) {
+    return {
+      additions: newMid.length,
+      removals: oldMid.length,
+      addedRanges:
+        newMid.length > 0 ? [{ startLine: start + 1, endLine: start + newMid.length }] : [],
+      removedRanges:
+        oldMid.length > 0 ? [{ startLine: start + 1, endLine: start + oldMid.length }] : []
+    }
+  }
+
+  const dp: number[][] = Array.from({ length: oldMid.length + 1 }, () =>
+    new Array<number>(newMid.length + 1).fill(0)
+  )
+  for (let oldIdx = 0; oldIdx < oldMid.length; oldIdx++) {
+    for (let i = 0; i < newMid.length; i++) {
+      dp[oldIdx + 1][i + 1] =
+        oldMid[oldIdx] === newMid[i]
+          ? dp[oldIdx][i] + 1
+          : Math.max(dp[oldIdx][i + 1], dp[oldIdx + 1][i])
+    }
+  }
+
+  const addedRanges: LineRange[] = []
+  const removedRanges: LineRange[] = []
+  let oldIdx = oldMid.length
+  let newIdx = newMid.length
+  while (oldIdx > 0 || newIdx > 0) {
+    if (oldIdx > 0 && newIdx > 0 && oldMid[oldIdx - 1] === newMid[newIdx - 1]) {
+      oldIdx -= 1
+      newIdx -= 1
+    } else if (newIdx > 0 && (oldIdx === 0 || dp[oldIdx][newIdx - 1] >= dp[oldIdx - 1][newIdx])) {
+      pushRange(addedRanges, start + newIdx)
+      newIdx -= 1
+    } else if (oldIdx > 0) {
+      pushRange(removedRanges, start + Math.max(1, newIdx + 1))
+      oldIdx -= 1
+    }
+  }
+
+  addedRanges.reverse()
+  removedRanges.reverse()
+  const unchanged = dp[oldMid.length][newMid.length]
+  return {
+    additions: newMid.length - unchanged,
+    removals: oldMid.length - unchanged,
+    addedRanges,
+    removedRanges
+  }
+}
+
 type ProgressCallback = (stream: 'stdout' | 'stderr', chunk: string, truncated: boolean) => void
+
+async function toolStartArgs(name: string, args: unknown): Promise<unknown> {
+  if (name !== 'write_file') return args
+  const writeArgs = args as { path?: unknown; content?: unknown }
+  if (typeof writeArgs.path !== 'string' || typeof writeArgs.content !== 'string') return args
+  try {
+    const abs = resolveInProject(writeArgs.path)
+    let before: string | null = null
+    try {
+      before = await fs.readFile(abs, 'utf8')
+    } catch {
+      before = null
+    }
+    const stats =
+      before === null
+        ? {
+            additions: textLines(writeArgs.content).length,
+            removals: 0,
+            addedRanges:
+              textLines(writeArgs.content).length > 0
+                ? [{ startLine: 1, endLine: textLines(writeArgs.content).length }]
+                : [],
+            removedRanges: []
+          }
+        : lineChangeStats(before, writeArgs.content)
+    return {
+      path: writeArgs.path,
+      bytes: Buffer.byteLength(writeArgs.content, 'utf8'),
+      created: before === null,
+      ...stats
+    }
+  } catch {
+    return { path: writeArgs.path }
+  }
+}
 
 function runCommand({
   command,
@@ -438,7 +621,13 @@ async function runStream(wc: WebContents, params: StartParams): Promise<void> {
       return async (args, opts) => {
         const toolCallId = opts?.toolCallId ?? genToolCallId(name)
         const startedAt = Date.now()
-        sendToolStart(wc, { requestId, toolCallId, name, args, startedAt })
+        sendToolStart(wc, {
+          requestId,
+          toolCallId,
+          name,
+          args: await toolStartArgs(name, args),
+          startedAt
+        })
         try {
           const result = await run(args, { toolCallId })
           // `'error' in result` is true even when result.error is undefined —
@@ -511,15 +700,34 @@ async function runStream(wc: WebContents, params: StartParams): Promise<void> {
           execute: traced('write_file', async ({ path, content }) => {
             try {
               const abs = resolveInProject(path)
-              let existed = true
+              let before: string | null = null
               try {
-                await fs.access(abs)
+                before = await fs.readFile(abs, 'utf8')
               } catch {
-                existed = false
+                before = null
               }
               await fs.mkdir(resolve(abs, '..'), { recursive: true })
               await fs.writeFile(abs, content, 'utf8')
-              return { ok: true, bytes: Buffer.byteLength(content, 'utf8'), created: !existed }
+              const stats =
+                before === null
+                  ? {
+                      additions: textLines(content).length,
+                      removals: 0,
+                      addedRanges:
+                        textLines(content).length > 0
+                          ? [{ startLine: 1, endLine: textLines(content).length }]
+                          : [],
+                      removedRanges: []
+                    }
+                  : lineChangeStats(before, content)
+              const undoToken = rememberWriteUndo(path, before)
+              return {
+                ok: true,
+                bytes: Buffer.byteLength(content, 'utf8'),
+                created: before === null,
+                undoToken,
+                ...stats
+              }
             } catch (e) {
               return { error: (e as Error).message }
             }
@@ -704,6 +912,12 @@ export function registerChatIpc(): void {
     const parsed = CancelParamsSchema.safeParse(raw)
     if (!parsed.success) return
     inFlight.get(parsed.data.requestId)?.abort()
+  })
+
+  ipcMain.handle('chat:undo-write', (_event, raw: unknown) => {
+    const parsed = UndoWriteParamsSchema.safeParse(raw)
+    if (!parsed.success) return { ok: false as const, error: 'invalid params' }
+    return undoWrite(parsed.data.token)
   })
 
   ipcMain.on('chat:command-approval:respond', (_event, raw: unknown) => {

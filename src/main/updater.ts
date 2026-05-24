@@ -29,8 +29,15 @@ export function registerUpdater(): void {
   // noisy "No handler registered" error to the main-process console.
   ipcMain.handle('updater:getState', () => currentState)
   ipcMain.handle('updater:check', async () => {
-    if (!app.isPackaged) return { ok: false, error: 'updates disabled in dev' }
     userInitiated = true
+    broadcast({ kind: 'checking' })
+    if (!app.isPackaged) {
+      setTimeout(() => {
+        if (userInitiated) broadcast({ kind: 'not-available' })
+        userInitiated = false
+      }, 700)
+      return { ok: true }
+    }
     try {
       await autoUpdater.checkForUpdates()
       return { ok: true }

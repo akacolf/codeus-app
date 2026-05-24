@@ -1,13 +1,18 @@
 import { Fragment, forwardRef, useEffect, useState } from 'react'
 import {
+  Bug,
   ChevronDown,
   Cloud,
+  Code2,
+  FileText,
   FolderOpen,
   GitBranch,
   Laptop,
   LayoutGrid,
   MessageCircle,
-  Terminal
+  SearchCheck,
+  Terminal,
+  TestTube2
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -39,6 +44,51 @@ const SUGGESTIONS: Suggestion[] = [
     action: 'open-connect-tool'
   }
 ]
+
+function projectSuggestions(files: string[]): Suggestion[] {
+  const has = (path: string): boolean => files.includes(path)
+  const hasPrefix = (prefix: string): boolean => files.some((path) => path.startsWith(prefix))
+  const suggestions: Suggestion[] = []
+
+  if (has('AGENTS.md') || has('CLAUDE.md')) {
+    suggestions.push({
+      icon: FileText,
+      label: 'Read the project instructions and summarize the product constraints'
+    })
+  }
+  if (has('package.json') && (has('electron.vite.config.ts') || hasPrefix('src/main/'))) {
+    suggestions.push({
+      icon: Code2,
+      label: 'Trace the Electron IPC and agent execution flow for release risks'
+    })
+  }
+  if (hasPrefix('src/renderer/')) {
+    suggestions.push({
+      icon: SearchCheck,
+      label: 'Audit the renderer UX for shipping blockers and polish gaps'
+    })
+  }
+  if (hasPrefix('tests/') || has('bun.lock')) {
+    suggestions.push({
+      icon: TestTube2,
+      label: 'Run the project checks and fix the first failing issue'
+    })
+  }
+  if (hasPrefix('.github/workflows/')) {
+    suggestions.push({
+      icon: Bug,
+      label: 'Inspect CI and prepare a clean release-readiness checklist'
+    })
+  }
+
+  suggestions.push({
+    icon: LayoutGrid,
+    label: 'Connect a tool — Linear, GitHub, Vercel',
+    action: 'open-connect-tool'
+  })
+
+  return suggestions.slice(0, 4)
+}
 
 const GREETING_COUNT = 3
 
@@ -92,11 +142,15 @@ export function Home({
   const [projectPath, setProjectPath] = useState<string | null>(null)
   const [osName, setOsName] = useState<string>('')
   const [recent, setRecent] = useState<string[]>([])
+  const [projectFiles, setProjectFiles] = useState<string[]>([])
   const { settings } = useSettings()
 
   const refreshProjectInfo = (): void => {
     void window.api.projectCwd().then(setProjectPath)
     void window.api.project.recent().then(setRecent)
+    void window.api.fs.findFiles('', 120).then((res) => {
+      setProjectFiles(res.ok ? res.files : [])
+    })
   }
 
   useEffect(() => {
@@ -108,6 +162,7 @@ export function Home({
   const projectName = projectPath ? basename(projectPath) : '…'
   const projectDisplay = projectPath ? tildeify(projectPath) : ''
   const greetingName = settings.userName.trim() || osName
+  const suggestions = projectFiles.length > 0 ? projectSuggestions(projectFiles) : SUGGESTIONS
 
   const handleSuggestion = (s: Suggestion): void => {
     if (s.action === 'open-connect-tool') {
@@ -209,7 +264,7 @@ export function Home({
 
         {showSuggestions && (
           <ul className="mt-8 flex w-full flex-col">
-            {SUGGESTIONS.map((s, i) => {
+            {suggestions.map((s, i) => {
               const Icon = s.icon
               return (
                 <Fragment key={s.label}>

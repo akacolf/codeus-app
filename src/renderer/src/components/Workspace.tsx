@@ -85,7 +85,7 @@ function TabBar({ open, activePath, onSelect, onClose }: TabBarProps): React.JSX
                 onClose(f.path)
               }}
               aria-label={`Close ${f.path}`}
-              className="inline-flex size-4 items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-100 hover:bg-foreground/12 hover:text-foreground"
+              className="order-first inline-flex size-4 items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-100 hover:bg-foreground/12 hover:text-foreground"
             >
               <X className="size-2.5" />
             </button>
