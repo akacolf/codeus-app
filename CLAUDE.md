@@ -21,7 +21,7 @@ Repo: `github.com/atomicfield/qc-codeus` (private; renamed from `qc-codium` on 2
 - **Bun** is the package manager. Always use `bun install` / `bun run …`, never npm. `bun.lock` is the source of truth.
 - **electron-builder** for packaging (`electron-builder.yml`, `build/` is `buildResources`)
 - **Production proxy lives in the `quantum-club-website` repo** at `src/app/api/codeus/v1/chat/completions/route.ts`, deployed to Vercel and served at `https://api.quantumclub.sh/v1` (via a host-scoped `vercel.json` rewrite). It forwards to **Vercel AI Gateway** (`https://ai-gateway.vercel.sh/v1`) using `AI_GATEWAY_API_KEY` — new orgs get $5 of free credits every 30 days, zero markup. `QC_MOCK_UPSTREAM=true` (Vercel env) streams a canned reply so the pipeline can be exercised without spending credits.
-- **`proxy/`** in this repo is a duplicate Bun/Vercel workspace kept for optional standalone local dev; the website's `npm run dev` serves the same route at `http://localhost:3000/api/codeus/v1`, so the workspace is no longer required.
+- **`proxy/`** in this repo is a duplicate Bun/Vercel workspace kept for optional standalone local dev; the website's `bun run dev` serves the same route at `http://localhost:3000/api/codeus/v1`, so the workspace is no longer required.
 
 ## Commands
 

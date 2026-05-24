@@ -179,14 +179,18 @@ export const useChatStore = create<ChatStore>()(
 
     respondToCommandApproval: (chatId, approvalId, decision) => {
       window.api.chat.respondToCommandApproval({ approvalId, ...decision })
+      // "Yes, don't ask again" approves every queued command for this stream
+      // in the main process, so drop the whole queue here instead of just the
+      // card that was answered. Otherwise we surface them one at a time.
+      const clearAll = decision.approved === true && decision.remember === true
       set((s) => ({
         chats: s.chats.map((c) =>
           c.id === chatId
             ? {
                 ...c,
-                commandApprovals: (c.commandApprovals ?? []).filter(
-                  (a) => a.approvalId !== approvalId
-                )
+                commandApprovals: clearAll
+                  ? undefined
+                  : (c.commandApprovals ?? []).filter((a) => a.approvalId !== approvalId)
               }
             : c
         )

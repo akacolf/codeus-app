@@ -74,7 +74,10 @@ const MAX_COMMAND_TIMEOUT_MS = 300_000
 const HIDDEN_DIRS = new Set(['.git', 'node_modules', '.next', 'out', 'dist', '.cache', '.turbo'])
 
 const inFlight = new Map<string, AbortController>()
-const pendingCommandApprovals = new Map<string, (decision: CommandApprovalDecision) => void>()
+const pendingCommandApprovals = new Map<
+  string,
+  { requestId: string; finish: (decision: CommandApprovalDecision) => void }
+>()
 
 // "Approve all commands" is scoped to a single stream, not the whole app
 // session. Previously this was a top-level boolean — a user approving "yes
@@ -309,13 +312,23 @@ function requestCommandApproval({
       settled = true
       pendingCommandApprovals.delete(approvalId)
       signal.removeEventListener('abort', abort)
-      if (decision.approved && decision.remember && scope) scope.approveAll = true
+      if (decision.approved && decision.remember && scope) {
+        scope.approveAll = true
+        // "Don't ask again" applies to the whole stream — auto-approve any
+        // sibling commands already queued for this request so the user isn't
+        // re-prompted for choices they've effectively already made. Snapshot
+        // first since each finish() mutates pendingCommandApprovals.
+        const siblings = [...pendingCommandApprovals.values()].filter(
+          (e) => e.requestId === requestId
+        )
+        for (const sibling of siblings) sibling.finish({ approved: true })
+      }
       resolveDecision(decision)
     }
 
     const abort = (): void => finish({ approved: false, instruction: 'cancelled' })
 
-    pendingCommandApprovals.set(approvalId, finish)
+    pendingCommandApprovals.set(approvalId, { requestId, finish })
     signal.addEventListener('abort', abort, { once: true })
     send(wc, 'chat:command-approval', {
       requestId,
@@ -703,7 +716,7 @@ export function registerChatIpc(): void {
       })
       .safeParse(raw)
     if (!parsed.success) return
-    pendingCommandApprovals.get(parsed.data.approvalId)?.({
+    pendingCommandApprovals.get(parsed.data.approvalId)?.finish({
       approved: parsed.data.approved,
       remember: parsed.data.remember,
       instruction: parsed.data.instruction

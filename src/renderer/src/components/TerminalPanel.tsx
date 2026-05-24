@@ -3,6 +3,7 @@ import { Cloud, Laptop, Maximize2, Minimize2, Plus, X } from 'lucide-react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { ImageAddon } from '@xterm/addon-image'
+import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import { genId } from '@renderer/lib/chat'
 import { cn } from '@renderer/lib/utils'
@@ -348,6 +349,17 @@ function TerminalInstance({
       })
     )
     term.open(host)
+    // GPU-accelerated renderer — must load after open(). Fast output (build
+    // logs, big cats) renders far cheaper on the GPU than xterm's DOM renderer.
+    // If the WebGL context is lost (driver reset, tab backgrounded), dispose the
+    // addon so xterm falls back to the canvas/DOM renderer instead of freezing.
+    try {
+      const webgl = new WebglAddon()
+      webgl.onContextLoss(() => webgl.dispose())
+      term.loadAddon(webgl)
+    } catch {
+      /* WebGL unavailable (software GL, blocklist) — DOM renderer still works */
+    }
     try {
       fit.fit()
     } catch {

@@ -14,13 +14,18 @@ const BalanceResponseSchema = z.object({
   walletAddress: z.string().nullable().optional()
 })
 
+const PaymentChainSchema = z.enum(['base', 'solana'])
+export type PaymentChain = z.infer<typeof PaymentChainSchema>
+
 const TopupQuoteResponseSchema = z.object({
   // x402 v2 payment requirement returned by /topup/quote, then settled after
-  // the Base USDC transfer verifies.
+  // the on-chain USDC transfer verifies. `network` is a CAIP-2 id — Base
+  // (eip155:8453) or Solana (solana:5eykt4…), keyed by `chain`.
   amountMicros: z.number().int().positive(),
   recipient: z.string(),
-  network: z.literal('eip155:8453'),
+  network: z.string(),
   asset: z.literal('USDC'),
+  chain: PaymentChainSchema,
   // Browser link the renderer opens externally. The proxy decides the format.
   paymentUrl: z.string().url(),
   expiresAt: z.string()
@@ -35,8 +40,9 @@ export type TopupQuoteResult =
       ok: true
       amountMicros: number
       recipient: string
-      network: 'eip155:8453'
+      network: string
       asset: 'USDC'
+      chain: PaymentChain
       paymentUrl: string
       expiresAt: string
     }
@@ -76,17 +82,18 @@ async function fetchBalance(): Promise<BalanceResult> {
 }
 
 const TopupRequestSchema = z.object({
-  amountMicros: z.number().int().positive().max(1_000_000_000) // hard ceiling of $1k per top-up — sanity, not policy
+  amountMicros: z.number().int().positive().max(1_000_000_000), // hard ceiling of $1k per top-up — sanity, not policy
+  chain: PaymentChainSchema.default('base')
 })
 
-async function requestTopup(amountMicros: number): Promise<TopupQuoteResult> {
+async function requestTopup(amountMicros: number, chain: PaymentChain): Promise<TopupQuoteResult> {
   const headers = authedHeaders({ 'content-type': 'application/json' })
   if (!headers) return { ok: false, error: 'signed out' }
   try {
     const res = await fetch(`${QC_PROXY_BASE_URL}/topup/quote`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ amountMicros })
+      body: JSON.stringify({ amountMicros, chain })
     })
     if (res.status === 401) {
       onAuthRejected()
@@ -108,6 +115,6 @@ export function registerBillingIpc(): void {
     if (!parsed.success) {
       return { ok: false, error: 'invalid amount' } satisfies TopupQuoteResult
     }
-    return requestTopup(parsed.data.amountMicros)
+    return requestTopup(parsed.data.amountMicros, parsed.data.chain)
   })
 }

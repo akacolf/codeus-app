@@ -224,15 +224,21 @@ export function Thread({
           )}
           {commandApprovals.length > 0 && (
             <div className="flex w-full flex-col gap-2 rounded-2xl bg-card/95 p-3 text-xs shadow-lg backdrop-blur">
-              {commandApprovals.map((approval) => (
-                <CommandApprovalCard
-                  key={approval.approvalId}
-                  approval={approval}
-                  onRespond={(decision) =>
-                    respondToCommandApproval(chat.id, approval.approvalId, decision)
-                  }
-                />
-              ))}
+              {/* Surface one command at a time. Answering the first reveals the
+                  next, so the user reviews each decision in turn. */}
+              <CommandApprovalCard
+                key={commandApprovals[0].approvalId}
+                approval={commandApprovals[0]}
+                onRespond={(decision) =>
+                  respondToCommandApproval(chat.id, commandApprovals[0].approvalId, decision)
+                }
+              />
+              {commandApprovals.length > 1 && (
+                <div className="pl-7 text-[11px] text-muted-foreground">
+                  {commandApprovals.length - 1} more command
+                  {commandApprovals.length - 1 === 1 ? '' : 's'} queued
+                </div>
+              )}
             </div>
           )}
           <Composer

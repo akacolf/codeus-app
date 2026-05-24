@@ -13,6 +13,13 @@ import { formatBalance, useBillingStore } from '@renderer/stores/billingStore'
 
 const PRESETS_MICROS = [5_000_000, 10_000_000, 25_000_000, 50_000_000] // $5 / $10 / $25 / $50
 
+type PaymentChain = 'base' | 'solana'
+
+const CHAINS: { id: PaymentChain; label: string }[] = [
+  { id: 'base', label: 'Base' },
+  { id: 'solana', label: 'Solana' }
+]
+
 interface QuoteState {
   paymentUrl: string
   amountMicros: number
@@ -29,6 +36,7 @@ export function TopupDialog(): React.JSX.Element {
   const pendingEnvelope = useBillingStore((s) => s.pendingEnvelope)
 
   const [selected, setSelected] = useState<number>(PRESETS_MICROS[1])
+  const [chain, setChain] = useState<PaymentChain>('base')
   const [requesting, setRequesting] = useState(false)
   const [quote, setQuote] = useState<QuoteState | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -56,7 +64,7 @@ export function TopupDialog(): React.JSX.Element {
   const requestQuote = async (): Promise<void> => {
     setRequesting(true)
     setError(null)
-    const res = await window.api.billing.requestTopup(selected)
+    const res = await window.api.billing.requestTopup(selected, chain)
     setRequesting(false)
     if (res.ok) {
       setQuote({
@@ -83,7 +91,8 @@ export function TopupDialog(): React.JSX.Element {
         <DialogHeader>
           <DialogTitle>Top up balance</DialogTitle>
           <DialogDescription>
-            Pay in USDC on Base. Funds credit to your account as soon as the payment settles.
+            Pay in USDC on {chain === 'solana' ? 'Solana' : 'Base'}. Funds credit to your account as
+            soon as the payment settles.
           </DialogDescription>
         </DialogHeader>
 
@@ -108,6 +117,28 @@ export function TopupDialog(): React.JSX.Element {
               Your last request hit a balance shortfall. Top up to continue.
             </p>
           )}
+
+          <div className="grid grid-cols-2 gap-2">
+            {CHAINS.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => {
+                  setChain(c.id)
+                  setQuote(null)
+                  setError(null)
+                }}
+                className={cn(
+                  'rounded-md py-2 text-sm font-medium transition-colors',
+                  chain === c.id
+                    ? 'bg-foreground text-background'
+                    : 'bg-foreground/8 text-foreground hover:bg-foreground/15'
+                )}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
 
           <div className="grid grid-cols-4 gap-2">
             {PRESETS_MICROS.map((micros) => (
@@ -151,7 +182,7 @@ export function TopupDialog(): React.JSX.Element {
 
           <p className="text-[11px] leading-relaxed text-muted-foreground">
             QC Codeus charges per request based on model usage. Stripe payments are coming after we
-            close incorporation &mdash; until then, USDC top-ups on Base are the way in.
+            close incorporation &mdash; until then, USDC top-ups on Base or Solana are the way in.
           </p>
         </div>
       </DialogContent>

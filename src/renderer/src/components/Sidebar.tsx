@@ -114,10 +114,10 @@ export function Sidebar({
       <div
         aria-hidden
         onClick={onClose}
-        // While open, mark the backdrop no-drag so it overrides the toolbar's
-        // macOS `-webkit-app-region: drag` strip — otherwise a click on the top
-        // 40px is consumed as a window-drag and never closes the sidebar.
-        // Only when open, so the toolbar stays draggable the rest of the time.
+        // The backdrop overlaps the toolbar's genuine `-webkit-app-region: drag`
+        // strip (top 40px). Without no-drag there, a click on that band is eaten
+        // by the OS as a window-drag and never closes the sidebar. Only while
+        // open, so the toolbar stays draggable otherwise.
         style={open ? ({ WebkitAppRegion: 'no-drag' } as React.CSSProperties) : undefined}
         className={cn(
           'absolute inset-0 z-30 bg-black/40 transition-opacity duration-200',

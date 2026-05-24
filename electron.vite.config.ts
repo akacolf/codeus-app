@@ -16,6 +16,12 @@ export default defineConfig({
         '@renderer': resolve('src/renderer/src')
       }
     },
-    plugins: [react(), tailwindcss()]
+    plugins: [
+      // React Compiler (stable v1) auto-memoizes components/hooks so the
+      // streaming chat surface doesn't re-render the whole thread on every
+      // assistant delta. Targets React 19 by default — no config needed.
+      react({ babel: { plugins: ['babel-plugin-react-compiler'] } }),
+      tailwindcss()
+    ]
   }
 })

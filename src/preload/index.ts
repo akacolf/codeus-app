@@ -360,13 +360,17 @@ export type BalanceResult =
   | { ok: true; balanceMicros: number; freeCreditMicros: number; walletAddress: string | null }
   | { ok: false; error: string }
 
+export type PaymentChain = 'base' | 'solana'
+
 export type TopupQuoteResult =
   | {
       ok: true
       amountMicros: number
       recipient: string
-      network: 'eip155:8453'
+      // CAIP-2 network id — Base (eip155:8453) or Solana (solana:5eykt4…).
+      network: string
       asset: 'USDC'
+      chain: PaymentChain
       paymentUrl: string
       expiresAt: string
     }
@@ -374,8 +378,8 @@ export type TopupQuoteResult =
 
 const billingBridge = {
   getBalance: (): Promise<BalanceResult> => ipcRenderer.invoke('billing:getBalance'),
-  requestTopup: (amountMicros: number): Promise<TopupQuoteResult> =>
-    ipcRenderer.invoke('billing:requestTopup', { amountMicros })
+  requestTopup: (amountMicros: number, chain: PaymentChain = 'base'): Promise<TopupQuoteResult> =>
+    ipcRenderer.invoke('billing:requestTopup', { amountMicros, chain })
 }
 
 const mcpBridge = {

@@ -83,7 +83,13 @@ export function SignInGate({ children }: SignInGateProps): React.JSX.Element {
       >
         <div
           className="flex h-full w-full items-center justify-center bg-background text-foreground"
-          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+          // Only claim the drag region while the gate is actually visible.
+          // `-webkit-app-region: drag` is an OS-level region that Electron keeps
+          // active even when the element is `opacity-0 pointer-events-none` —
+          // hiding via CSS does not remove it (only dropping the value does).
+          // Left unconditional, this full-window z-40 overlay would keep eating
+          // clicks app-wide after sign-in (terminal buttons, etc.).
+          style={showGate ? ({ WebkitAppRegion: 'drag' } as React.CSSProperties) : undefined}
         >
           {isAwaiting ? (
             <AwaitingBrowser
