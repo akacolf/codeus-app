@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { X402Envelope } from '../../../preload/index'
+import type { PlanUsage, X402Envelope } from '../../../preload/index'
 
 // USDC has 6 decimals on Base, but for ergonomics we settle on "micros" where
 // 1_000_000 micros = $1. The proxy uses the same unit.
@@ -27,6 +27,9 @@ interface BillingStore {
     currentPeriodEnd: string
     monthlyCreditMicros: number
   } | null
+  // Rolling-cap usage while a metered plan is active; null otherwise. Drives
+  // the composer's usage ring.
+  usage: PlanUsage | null
   loading: boolean
   lastError: string | null
 
@@ -46,6 +49,7 @@ export const useBillingStore = create<BillingStore>((set, get) => ({
   freeCreditMicros: null,
   walletAddress: null,
   activePlan: null,
+  usage: null,
   loading: false,
   lastError: null,
   topupOpen: false,
@@ -61,6 +65,7 @@ export const useBillingStore = create<BillingStore>((set, get) => ({
         freeCreditMicros: res.freeCreditMicros,
         walletAddress: res.walletAddress,
         activePlan: res.activePlan,
+        usage: res.usage,
         loading: false,
         lastError: null
       })

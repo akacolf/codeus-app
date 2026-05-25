@@ -27,11 +27,12 @@ import {
   type PermissionId
 } from '@renderer/lib/settings'
 import { getUsage, subscribeUsage, type UsageSnapshot } from '@renderer/lib/usage'
+import { useBillingStore } from '@renderer/stores/billingStore'
 import type { CommandApproval } from '@renderer/lib/chat'
 
-// Soft daily cap used to draw the ring. Research-preview accounts share a
-// pool, so this is a guidance bar, not a hard quota — when the proxy starts
-// returning real remaining-credit headers, swap this for the live number.
+// Soft daily cap for the ring's *fallback* mode (no active plan — e.g. the
+// free Preview tier). When a metered plan is active, the proxy returns real
+// rolling-window usage via /balance and the ring renders that instead.
 const DAILY_REQUEST_CAP = 100
 
 // Per-attachment cap. Larger files are clipped on injection so a single drop
@@ -485,7 +486,7 @@ export function Composer({
                   <PopoverTrigger asChild>
                     <button
                       type="button"
-                      aria-label="Usage remaining today"
+                      aria-label="Usage"
                       onClick={(e) => e.stopPropagation()}
                       className="inline-flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground data-[state=open]:bg-foreground/8 data-[state=open]:text-foreground"
                     >
@@ -709,22 +710,27 @@ function useUsage(): UsageSnapshot {
   return snap
 }
 
-function UsageRing(): React.JSX.Element {
-  const usage = useUsage()
-  const used = Math.min(usage.requests, DAILY_REQUEST_CAP)
-  const ratio = used / DAILY_REQUEST_CAP
-  const remaining = Math.max(0, DAILY_REQUEST_CAP - usage.requests)
+function fmtUsd(micros: number): string {
+  return `$${(micros / 1_000_000).toFixed(2)}`
+}
+
+function fmtReset(resetAt: number): string {
+  const mins = Math.max(0, Math.round((resetAt - Date.now()) / 60000))
+  if (mins <= 0) return 'now'
+  if (mins < 60) return `${mins}m`
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return m ? `${h}h ${m}m` : `${h}h`
+}
+
+function Ring({ ratio, label }: { ratio: number; label: string }): React.JSX.Element {
   const r = 5
   const c = 2 * Math.PI * r
+  const clamped = Math.max(0, Math.min(1, ratio))
   // Trim a hair so the stroke joins are clean at 0% / 100%.
-  const dash = Math.max(0, Math.min(c - 0.01, c * ratio))
+  const dash = Math.max(0, Math.min(c - 0.01, c * clamped))
   return (
-    <svg
-      viewBox="0 0 14 14"
-      className="size-3.5 shrink-0"
-      role="img"
-      aria-label={`${remaining} of ${DAILY_REQUEST_CAP} requests remaining today`}
-    >
+    <svg viewBox="0 0 14 14" className="size-3.5 shrink-0" role="img" aria-label={label}>
       <circle
         cx="7"
         cy="7"
@@ -749,10 +755,77 @@ function UsageRing(): React.JSX.Element {
   )
 }
 
+function UsageRing(): React.JSX.Element {
+  const usage = useBillingStore((s) => s.usage)
+  const local = useUsage()
+
+  // Plan active → ring tracks whichever rolling window is closest to its cap.
+  if (usage) {
+    const r5 =
+      usage.window5h.limitMicros > 0 ? usage.window5h.usedMicros / usage.window5h.limitMicros : 0
+    const rw = usage.weekly.limitMicros > 0 ? usage.weekly.usedMicros / usage.weekly.limitMicros : 0
+    const ratio = Math.max(r5, rw)
+    return (
+      <Ring
+        ratio={ratio}
+        label={`Plan usage — ${Math.round(ratio * 100)}% of the tighter window used`}
+      />
+    )
+  }
+
+  // Fallback: local request-count soft cap (no metered plan).
+  const remaining = Math.max(0, DAILY_REQUEST_CAP - local.requests)
+  return (
+    <Ring
+      ratio={Math.min(local.requests, DAILY_REQUEST_CAP) / DAILY_REQUEST_CAP}
+      label={`${remaining} of ${DAILY_REQUEST_CAP} requests remaining today`}
+    />
+  )
+}
+
 function UsageReadout(): React.JSX.Element {
-  const usage = useUsage()
-  const remaining = Math.max(0, DAILY_REQUEST_CAP - usage.requests)
-  const pct = Math.min(100, Math.round((usage.requests / DAILY_REQUEST_CAP) * 100))
+  const usage = useBillingStore((s) => s.usage)
+  const local = useUsage()
+
+  if (usage) {
+    const windows = [
+      { key: '5h', label: 'Past 5 hours', w: usage.window5h },
+      { key: 'week', label: 'Past 7 days', w: usage.weekly }
+    ]
+    return (
+      <div className="flex flex-col gap-3 px-1 text-xs">
+        {windows.map(({ key, label, w }) => {
+          const pct =
+            w.limitMicros > 0 ? Math.min(100, Math.round((w.usedMicros / w.limitMicros) * 100)) : 0
+          return (
+            <div key={key} className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-foreground/90">{label}</span>
+                <span className="text-foreground/85 tabular-nums">
+                  {fmtUsd(w.usedMicros)} / {fmtUsd(w.limitMicros)}
+                </span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-foreground/8">
+                <div className="h-full bg-foreground/70" style={{ width: `${pct}%` }} />
+              </div>
+              {pct >= 100 && (
+                <span className="text-[11px] text-muted-foreground">
+                  Resets in {fmtReset(w.resetAt)}
+                </span>
+              )}
+            </div>
+          )
+        })}
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          Your plan paces usage with rolling 5-hour and weekly limits. Top up to lift them —
+          topped-up credit isn&apos;t capped.
+        </p>
+      </div>
+    )
+  }
+
+  const remaining = Math.max(0, DAILY_REQUEST_CAP - local.requests)
+  const pct = Math.min(100, Math.round((local.requests / DAILY_REQUEST_CAP) * 100))
   return (
     <div className="flex flex-col gap-2 px-1 text-xs">
       <div className="flex items-center justify-between">

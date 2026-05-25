@@ -112,6 +112,40 @@ function readPaymentRequired(res: Response): X402Envelope | null {
   }
 }
 
+export interface ChatUsageLimit {
+  window: '5h' | 'week'
+  limitMicros: number
+  usedMicros: number
+  resetAt: number
+}
+
+// Parse the proxy's 429 usage_limit body. Returns null for any other 429 (e.g.
+// the IP rate limiter), so those keep flowing through the generic error path.
+async function readUsageLimit(res: Response): Promise<ChatUsageLimit | null> {
+  try {
+    const body = (await res.clone().json()) as {
+      error?: {
+        type?: string
+        window?: unknown
+        limit_micros?: unknown
+        used_micros?: unknown
+        reset_at?: unknown
+      }
+    }
+    const e = body.error
+    if (!e || e.type !== 'usage_limit') return null
+    if (e.window !== '5h' && e.window !== 'week') return null
+    return {
+      window: e.window,
+      limitMicros: Number(e.limit_micros ?? 0),
+      usedMicros: Number(e.used_micros ?? 0),
+      resetAt: Number(e.reset_at ?? Date.now())
+    }
+  } catch {
+    return null
+  }
+}
+
 export type ToolStatus = 'running' | 'done' | 'error'
 
 interface ToolStartPayload {
@@ -591,6 +625,14 @@ async function runStream(wc: WebContents, params: StartParams): Promise<void> {
       } catch {
         send(wc, 'chat:payment-required', { requestId, envelope: {} satisfies X402Envelope })
       }
+    }
+    if (res.status === 429) {
+      // Rolling-cap rejection from the proxy. Surface the window + reset so the
+      // renderer can explain it instead of treating it as a generic failure.
+      // A bare 429 with no usage_limit body (e.g. IP rate limit) falls through
+      // to the normal error path.
+      const limit = await readUsageLimit(res)
+      if (limit) send(wc, 'chat:usage-limited', { requestId, limit })
     }
     return res
   }

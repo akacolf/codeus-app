@@ -640,6 +640,20 @@ function startAssistantStream(
         // the user retries once their balance refills.
         useBillingStore.getState().openTopup(envelope)
         void useBillingStore.getState().refresh()
+      },
+      onUsageLimited: (limit) => {
+        // Proxy returned 429: the plan's rolling cap is hit. Explain it instead
+        // of popping the top-up dialog — though a top-up does raise the ceiling
+        // (topped-up credit bypasses the cap), so we mention it. Refresh so the
+        // usage ring reflects the maxed-out window immediately.
+        const mins = Math.max(1, Math.round((limit.resetAt - Date.now()) / 60000))
+        const when = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`
+        const scope = limit.window === '5h' ? '5-hour' : 'weekly'
+        finish(
+          `You've reached your plan's ${scope} usage limit. It resets in about ${when}. ` +
+            `Top up to keep going right away — topped-up credit isn't capped.`
+        )
+        void useBillingStore.getState().refresh()
       }
     }
   )

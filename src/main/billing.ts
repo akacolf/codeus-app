@@ -8,6 +8,23 @@ import { getAccountId } from './identity'
 
 const QC_PROXY_BASE_URL = process.env.QC_PROXY_BASE_URL || 'https://api.quantumclub.sh/v1'
 
+// Rolling usage window the proxy reports while a metered plan is active.
+// `limitMicros` already includes top-up headroom; `resetAt` is epoch ms.
+const UsageWindowSchema = z.object({
+  usedMicros: z.number().int().nonnegative(),
+  limitMicros: z.number().int().nonnegative(),
+  resetAt: z.number()
+})
+
+const UsageSchema = z
+  .object({
+    planId: z.string(),
+    window5h: UsageWindowSchema,
+    weekly: UsageWindowSchema
+  })
+  .nullable()
+  .optional()
+
 const BalanceResponseSchema = z.object({
   balanceMicros: z.number().int().nonnegative(),
   freeCreditMicros: z.number().int().nonnegative(),
@@ -21,8 +38,21 @@ const BalanceResponseSchema = z.object({
       monthlyCreditMicros: z.number().int().nonnegative()
     })
     .nullable()
-    .optional()
+    .optional(),
+  usage: UsageSchema
 })
+
+export interface PlanUsageWindow {
+  usedMicros: number
+  limitMicros: number
+  resetAt: number
+}
+
+export interface PlanUsage {
+  planId: string
+  window5h: PlanUsageWindow
+  weekly: PlanUsageWindow
+}
 
 const PaymentChainSchema = z.enum(['base', 'solana'])
 export type PaymentChain = z.infer<typeof PaymentChainSchema>
@@ -54,6 +84,7 @@ export type BalanceResult =
         currentPeriodEnd: string
         monthlyCreditMicros: number
       } | null
+      usage: PlanUsage | null
     }
   | { ok: false; error: string }
 
@@ -97,7 +128,8 @@ async function fetchBalance(): Promise<BalanceResult> {
       balanceMicros: parsed.data.balanceMicros,
       freeCreditMicros: parsed.data.freeCreditMicros,
       walletAddress: parsed.data.walletAddress ?? null,
-      activePlan: parsed.data.activePlan ?? null
+      activePlan: parsed.data.activePlan ?? null,
+      usage: parsed.data.usage ?? null
     }
   } catch (e) {
     return { ok: false, error: (e as Error).message }

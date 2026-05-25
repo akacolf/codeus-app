@@ -67,6 +67,15 @@ export interface X402Envelope {
   paymentUrl?: string
 }
 
+// Sent when the proxy returns 429 because the request would exceed the active
+// plan's rolling 5-hour or weekly cap. `resetAt` is epoch ms.
+export interface ChatUsageLimit {
+  window: '5h' | 'week'
+  limitMicros: number
+  usedMicros: number
+  resetAt: number
+}
+
 export interface ChatHandlers {
   onChunk: (delta: string) => void
   onTool: (event: ChatToolEvent) => void
@@ -74,6 +83,7 @@ export interface ChatHandlers {
   onDone: () => void
   onError: (message: string) => void
   onPaymentRequired?: (envelope: X402Envelope) => void
+  onUsageLimited?: (limit: ChatUsageLimit) => void
 }
 
 function startChat(params: ChatStartParams, handlers: ChatHandlers): () => void {
@@ -94,6 +104,12 @@ function startChat(params: ChatStartParams, handlers: ChatHandlers): () => void 
   const pay = (_e: IpcRendererEvent, p: { requestId: string; envelope: X402Envelope }): void => {
     if (p.requestId === requestId) handlers.onPaymentRequired?.(p.envelope)
   }
+  const usageLimit = (
+    _e: IpcRendererEvent,
+    p: { requestId: string; limit: ChatUsageLimit }
+  ): void => {
+    if (p.requestId === requestId) handlers.onUsageLimited?.(p.limit)
+  }
   const commandApproval = (_e: IpcRendererEvent, p: ChatCommandApprovalEvent): void => {
     if (p.requestId === requestId) handlers.onCommandApproval?.(p)
   }
@@ -105,6 +121,7 @@ function startChat(params: ChatStartParams, handlers: ChatHandlers): () => void 
     ipcRenderer.off('chat:done', done)
     ipcRenderer.off('chat:error', err)
     ipcRenderer.off('chat:payment-required', pay)
+    ipcRenderer.off('chat:usage-limited', usageLimit)
     then()
   }
 
@@ -114,6 +131,7 @@ function startChat(params: ChatStartParams, handlers: ChatHandlers): () => void 
   ipcRenderer.on('chat:done', done)
   ipcRenderer.on('chat:error', err)
   ipcRenderer.on('chat:payment-required', pay)
+  ipcRenderer.on('chat:usage-limited', usageLimit)
   ipcRenderer.send('chat:start', params)
 
   return (): void => {
@@ -375,6 +393,18 @@ export interface McpStatePatch {
   selection?: McpSelection | null
 }
 
+export interface PlanUsageWindow {
+  usedMicros: number
+  limitMicros: number
+  resetAt: number
+}
+
+export interface PlanUsage {
+  planId: string
+  window5h: PlanUsageWindow
+  weekly: PlanUsageWindow
+}
+
 export type BalanceResult =
   | {
       ok: true
@@ -388,6 +418,7 @@ export type BalanceResult =
         currentPeriodEnd: string
         monthlyCreditMicros: number
       } | null
+      usage: PlanUsage | null
     }
   | { ok: false; error: string }
 
