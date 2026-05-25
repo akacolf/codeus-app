@@ -1,5 +1,22 @@
 name: Release
 
+# Packages QC Codeus for macOS / Windows / Linux and attaches the installers
+# plus the electron-updater manifests (latest*.yml) to a GitHub Release.
+#
+#   git tag v0.2.0 && git push origin v0.2.0
+#
+# Builds are UNSIGNED (no Apple / Windows code-signing certs).
+# CSC_IDENTITY_AUTO_DISCOVERY=false stops electron-builder from hunting for a
+# macOS identity and failing the job. Consequences: macOS warns on first launch
+# (right-click → Open) and its in-app updater is detect-only; Windows SmartScreen
+# warns until reputation builds but NSIS auto-update works; Linux is unaffected.
+#
+# Releases upload as a DRAFT — review it, then click "Publish release". Only a
+# published, non-prerelease release becomes `releases/latest`, which is what the
+# website download proxy (quantumclub.sh/codeus/dl/<file>) and the in-app
+# electron-updater both read. Publishing is therefore the gate that pushes an
+# update out to clients.
+
 on:
   push:
     tags: ['v*']
@@ -33,7 +50,6 @@ jobs:
             artifacts: |
               dist/*.AppImage
               dist/*.deb
-              dist/*.snap
               dist/latest-linux.yml
     runs-on: ${{ matrix.os }}
     steps:
