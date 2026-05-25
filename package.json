@@ -1,6 +1,6 @@
 {
   "name": "qc-codeus",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "QC Codeus — Quantum Club's next-gen agentic development platform merged with IDE experiences.",
   "main": "./out/main/index.js",
   "author": "Quantum Club",

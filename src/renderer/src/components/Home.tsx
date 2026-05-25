@@ -10,7 +10,6 @@ import {
   Laptop,
   MessageCircle,
   SearchCheck,
-  Sparkles,
   Terminal,
   TestTube2
 } from 'lucide-react'
@@ -46,6 +45,32 @@ const SUGGESTIONS: Suggestion[] = [
   { icon: GitBranch, label: 'Review my recent commits for risks and follow-ups' },
   { icon: SearchCheck, label: 'Find the riskiest code and explain why' }
 ]
+
+// Pick an icon that fits what the suggestion is actually about, so AI-generated
+// prompts read with the same visual vocabulary as the static ones. Order
+// matters — earlier matches win.
+const ICON_RULES: { pattern: RegExp; icon: Suggestion['icon'] }[] = [
+  { pattern: /\b(test|spec|coverage|vitest|jest)\b/i, icon: TestTube2 },
+  { pattern: /\b(bug|fix|crash|error|fail|regression|broken)\b/i, icon: Bug },
+  { pattern: /\b(review|audit|risk|inspect|check|verify|lint)\b/i, icon: SearchCheck },
+  {
+    pattern: /\b(commit|standup|changelog|release|ship|push|branch|rebase|merge)\b/i,
+    icon: GitBranch
+  },
+  { pattern: /\b(doc|docs|readme|comment|summar|explain|instruction|note)\b/i, icon: FileText },
+  { pattern: /\b(ci|workflow|pipeline|deploy|build|action)\b/i, icon: Bug },
+  {
+    pattern: /\b(refactor|implement|add|write|trace|wire|component|function|api|module|code)\b/i,
+    icon: Code2
+  }
+]
+
+function iconForLabel(label: string): Suggestion['icon'] {
+  for (const { pattern, icon } of ICON_RULES) {
+    if (pattern.test(label)) return icon
+  }
+  return MessageCircle
+}
 
 // Strip a conventional-commit prefix ("feat:", "ci(scope):") and trim length so
 // a subject reads cleanly when embedded in a suggestion label.
@@ -234,6 +259,7 @@ export function Home({
     let cancelled = false
     void window.api.suggest
       .home({
+        headSha: commits[0]?.hash,
         branch,
         dirtyCount,
         commits: commits.map((c) => ({ subject: c.subject, relativeDate: c.relativeDate })),
@@ -256,7 +282,7 @@ export function Home({
   const greetingName = settings.userName.trim() || osName
   const suggestions =
     aiSuggestions.length > 0
-      ? aiSuggestions.map((label) => ({ icon: Sparkles, label }))
+      ? aiSuggestions.map((label) => ({ icon: iconForLabel(label), label }))
       : buildSuggestions(projectFiles, commits, branch)
 
   const handleSuggestion = (s: Suggestion): void => {

@@ -11,9 +11,13 @@ const QC_PROXY_BASE_URL = process.env.QC_PROXY_BASE_URL || 'https://api.quantumc
 const SUGGEST_MODEL = 'anthropic/claude-haiku-4.5'
 
 const MAX_LABEL_LEN = 76
-const MAX_SUGGESTIONS = 3
+const MAX_SUGGESTIONS = 4
+const MAX_CACHE_ENTRIES = 50
 
 const ContextSchema = z.object({
+  // HEAD commit SHA — when present, suggestions are cached against it so we
+  // don't re-call the model on every home-screen mount for the same commit.
+  headSha: z.string().optional(),
   branch: z.string().nullable().default(null),
   dirtyCount: z.number().int().nonnegative().default(0),
   commits: z
@@ -28,6 +32,28 @@ const ContextSchema = z.object({
 type SuggestContext = z.infer<typeof ContextSchema>
 
 export type SuggestResult = { ok: true; suggestions: string[] } | { ok: false; error: string }
+
+// In-memory cache keyed by HEAD SHA. Survives for the app session; a new commit
+// produces a new key and a fresh generation.
+const cache = new Map<string, string[]>()
+
+function cacheGet(sha: string): string[] | undefined {
+  const hit = cache.get(sha)
+  if (!hit) return undefined
+  // Refresh recency (LRU): re-insert so frequently-seen SHAs survive eviction.
+  cache.delete(sha)
+  cache.set(sha, hit)
+  return hit
+}
+
+function cacheSet(sha: string, suggestions: string[]): void {
+  cache.set(sha, suggestions)
+  while (cache.size > MAX_CACHE_ENTRIES) {
+    const oldest = cache.keys().next().value
+    if (oldest === undefined) break
+    cache.delete(oldest)
+  }
+}
 
 function clampLabel(s: string): string {
   const t = s.replace(/\s+/g, ' ').trim()
@@ -91,6 +117,12 @@ async function suggestHome(rawCtx: unknown): Promise<SuggestResult> {
   const parsed = ContextSchema.safeParse(rawCtx ?? {})
   if (!parsed.success) return { ok: false, error: 'invalid context' }
 
+  const { headSha } = parsed.data
+  if (headSha) {
+    const cached = cacheGet(headSha)
+    if (cached) return { ok: true, suggestions: cached }
+  }
+
   const sessionToken = getSessionToken()
   if (!sessionToken) return { ok: false, error: 'signed out' }
 
@@ -130,6 +162,7 @@ async function suggestHome(rawCtx: unknown): Promise<SuggestResult> {
 
     const suggestions = parseSuggestions(text)
     if (suggestions.length === 0) return { ok: false, error: 'no suggestions' }
+    if (headSha) cacheSet(headSha, suggestions)
     return { ok: true, suggestions }
   } catch (e) {
     return { ok: false, error: (e as Error)?.message || 'suggestion failed' }

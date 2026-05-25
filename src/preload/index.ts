@@ -414,6 +414,7 @@ const billingBridge = {
 }
 
 export interface SuggestContext {
+  headSha?: string
   branch: string | null
   dirtyCount: number
   commits: { subject: string; relativeDate?: string }[]
