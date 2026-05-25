@@ -249,6 +249,15 @@ export function Home({
     return window.api.project.onChanged(() => refreshProjectInfo())
   }, [refreshProjectInfo])
 
+  // A branch checkout doesn't fire project:onChanged, so re-pull commits when
+  // the branch changes. This updates the HEAD SHA the suggestion request keys
+  // on, so switching branches surfaces suggestions for the new branch.
+  useEffect(() => {
+    void window.api.git.recentCommits(10).then((res) => {
+      setCommits(res.ok ? res.data.commits : [])
+    })
+  }, [branch])
+
   // Ask the model for prompts tailored to the current repo state + the user's
   // recent intents whenever the snapshot changes. Best-effort: on any failure
   // (offline, signed out, empty) we fall back to the local heuristics below.

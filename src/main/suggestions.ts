@@ -117,9 +117,12 @@ async function suggestHome(rawCtx: unknown): Promise<SuggestResult> {
   const parsed = ContextSchema.safeParse(rawCtx ?? {})
   if (!parsed.success) return { ok: false, error: 'invalid context' }
 
-  const { headSha } = parsed.data
-  if (headSha) {
-    const cached = cacheGet(headSha)
+  // Key on branch + SHA: switching branches must surface fresh suggestions even
+  // when both branches point at the same commit.
+  const { headSha, branch } = parsed.data
+  const cacheKey = headSha ? `${branch ?? ''}@${headSha}` : null
+  if (cacheKey) {
+    const cached = cacheGet(cacheKey)
     if (cached) return { ok: true, suggestions: cached }
   }
 
@@ -162,7 +165,7 @@ async function suggestHome(rawCtx: unknown): Promise<SuggestResult> {
 
     const suggestions = parseSuggestions(text)
     if (suggestions.length === 0) return { ok: false, error: 'no suggestions' }
-    if (headSha) cacheSet(headSha, suggestions)
+    if (cacheKey) cacheSet(cacheKey, suggestions)
     return { ok: true, suggestions }
   } catch (e) {
     return { ok: false, error: (e as Error)?.message || 'suggestion failed' }
