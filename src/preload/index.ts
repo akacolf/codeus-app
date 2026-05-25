@@ -292,6 +292,13 @@ export interface GitWorktree {
   current: boolean
 }
 
+export interface GitCommit {
+  hash: string
+  subject: string
+  author: string
+  relativeDate: string
+}
+
 export type SandboxCredsState =
   | { ok: true; configured: true; teamId: string; projectId: string; tokenPreview: string }
   | { ok: false; configured: false }
@@ -406,6 +413,20 @@ const billingBridge = {
     ipcRenderer.invoke('billing:requestTopup', { amountMicros, chain })
 }
 
+export interface SuggestContext {
+  branch: string | null
+  dirtyCount: number
+  commits: { subject: string; relativeDate?: string }[]
+  files: string[]
+  recentIntents: string[]
+}
+
+export type SuggestResult = { ok: true; suggestions: string[] } | { ok: false; error: string }
+
+const suggestBridge = {
+  home: (ctx: SuggestContext): Promise<SuggestResult> => ipcRenderer.invoke('suggest:home', ctx)
+}
+
 const mcpBridge = {
   getInfo: (): Promise<McpInfo | null> => ipcRenderer.invoke('mcp:getInfo'),
   updateState: (patch: McpStatePatch): Promise<{ ok: true } | { ok: false; error: string }> =>
@@ -448,6 +469,8 @@ const gitBridge = {
     ipcRenderer.invoke('git:branches'),
   worktrees: (): Promise<GitResult<{ worktrees: GitWorktree[] }>> =>
     ipcRenderer.invoke('git:worktrees'),
+  recentCommits: (limit = 10): Promise<GitResult<{ commits: GitCommit[] }>> =>
+    ipcRenderer.invoke('git:recentCommits', { limit }),
   checkout: (name: string): Promise<GitResult> => ipcRenderer.invoke('git:checkout', { name }),
   createBranch: (name: string): Promise<GitResult> =>
     ipcRenderer.invoke('git:createBranch', { name }),
@@ -519,6 +542,7 @@ const api = {
   git: gitBridge,
   sandbox: sandboxBridge,
   mcp: mcpBridge,
+  suggest: suggestBridge,
   billing: billingBridge,
   auth: authBridge
 }

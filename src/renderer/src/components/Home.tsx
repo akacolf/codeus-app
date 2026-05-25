@@ -1,4 +1,4 @@
-import { Fragment, forwardRef, useEffect, useState } from 'react'
+import { Fragment, forwardRef, useCallback, useEffect, useState } from 'react'
 import {
   Bug,
   ChevronDown,
@@ -8,12 +8,13 @@ import {
   FolderOpen,
   GitBranch,
   Laptop,
-  LayoutGrid,
   MessageCircle,
   SearchCheck,
+  Sparkles,
   Terminal,
   TestTube2
 } from 'lucide-react'
+import { useChatStore } from '@renderer/stores/chatStore'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,21 +30,55 @@ import { Composer } from './Composer'
 interface Suggestion {
   icon: React.ComponentType<{ className?: string }>
   label: string
-  // If set, clicking the suggestion runs this side effect instead of filling
-  // the composer draft.
-  action?: 'open-connect-tool'
 }
 
+interface GitCommit {
+  hash: string
+  subject: string
+  author: string
+  relativeDate: string
+}
+
+// Static fallback — only shown when there's no repo signal and the AI call
+// hasn't produced anything (offline, signed out, or empty workspace).
 const SUGGESTIONS: Suggestion[] = [
   { icon: MessageCircle, label: 'Tour the repo and surface what to ship first' },
-  { icon: MessageCircle, label: 'Draft today’s standup from yesterday’s commits' },
   { icon: GitBranch, label: 'Review my recent commits for risks and follow-ups' },
-  {
-    icon: LayoutGrid,
-    label: 'Connect a tool — Linear, GitHub, Vercel',
-    action: 'open-connect-tool'
-  }
+  { icon: SearchCheck, label: 'Find the riskiest code and explain why' }
 ]
+
+// Strip a conventional-commit prefix ("feat:", "ci(scope):") and trim length so
+// a subject reads cleanly when embedded in a suggestion label.
+function cleanSubject(subject: string, max = 56): string {
+  let s = subject.replace(/^[a-z]+(\([^)]*\))?!?:\s*/i, '').trim()
+  if (!s) s = subject.trim()
+  return s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s
+}
+
+function commitSuggestions(commits: GitCommit[], branch: string | null): Suggestion[] {
+  if (commits.length === 0) return []
+  const latest = cleanSubject(commits[0].subject)
+  const out: Suggestion[] = []
+
+  if (latest) {
+    out.push({
+      icon: GitBranch,
+      label: `Pick up where the last commit left off — “${latest}”`
+    })
+  }
+  if (commits.length >= 2) {
+    const where = branch ? ` on ${branch}` : ''
+    out.push({
+      icon: SearchCheck,
+      label: `Review the last ${commits.length} commits${where} for risks and follow-ups`
+    })
+    out.push({
+      icon: MessageCircle,
+      label: 'Draft a standup update from my recent commits'
+    })
+  }
+  return out
+}
 
 function projectSuggestions(files: string[]): Suggestion[] {
   const has = (path: string): boolean => files.includes(path)
@@ -81,13 +116,40 @@ function projectSuggestions(files: string[]): Suggestion[] {
     })
   }
 
-  suggestions.push({
-    icon: LayoutGrid,
-    label: 'Connect a tool — Linear, GitHub, Vercel',
-    action: 'open-connect-tool'
+  return suggestions
+}
+
+// Local heuristic fallback used instantly while the AI suggestions load (and if
+// they fail). Leads with commit-aware prompts, then file heuristics, then the
+// static set if neither has anything.
+function buildSuggestions(
+  files: string[],
+  commits: GitCommit[],
+  branch: string | null
+): Suggestion[] {
+  const merged = [...commitSuggestions(commits, branch), ...projectSuggestions(files)]
+  if (merged.length === 0) return SUGGESTIONS
+
+  const seen = new Set<string>()
+  const deduped = merged.filter((s) => {
+    if (seen.has(s.label)) return false
+    seen.add(s.label)
+    return true
   })
 
-  return suggestions.slice(0, 4)
+  return deduped.slice(0, 4)
+}
+
+// The user's "intents" — what they have recently asked the agent to do, drawn
+// from their most recent chat titles. Read imperatively so the home screen does
+// not re-render (or re-request suggestions) on every streaming chat update.
+function recentIntents(): string[] {
+  return useChatStore
+    .getState()
+    .chats.filter((c) => c.title.trim() && c.title.trim().toLowerCase() !== 'new chat')
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, 8)
+    .map((c) => c.title.trim())
 }
 
 const GREETING_COUNT = 3
@@ -109,7 +171,6 @@ interface HomeProps {
   onSubmit: (text: string) => void
   onOpenTerminal?: () => void
   onReveal?: () => void
-  onOpenConnectTool?: () => void
   onOpenGit?: () => void
   branch: string | null
   dirtyCount: number
@@ -132,7 +193,6 @@ export function Home({
   onSubmit,
   onOpenTerminal,
   onReveal,
-  onOpenConnectTool,
   onOpenGit,
   branch,
   dirtyCount,
@@ -143,32 +203,63 @@ export function Home({
   const [osName, setOsName] = useState<string>('')
   const [recent, setRecent] = useState<string[]>([])
   const [projectFiles, setProjectFiles] = useState<string[]>([])
+  const [commits, setCommits] = useState<GitCommit[]>([])
+  const [aiSuggestions, setAiSuggestions] = useState<string[]>([])
   const { settings } = useSettings()
 
-  const refreshProjectInfo = (): void => {
+  const refreshProjectInfo = useCallback((): void => {
     void window.api.projectCwd().then(setProjectPath)
     void window.api.project.recent().then(setRecent)
     void window.api.fs.findFiles('', 120).then((res) => {
       setProjectFiles(res.ok ? res.files : [])
     })
-  }
+    void window.api.git.recentCommits(10).then((res) => {
+      setCommits(res.ok ? res.data.commits : [])
+    })
+  }, [])
 
   useEffect(() => {
     refreshProjectInfo()
     void window.api.osUserName().then(setOsName)
     return window.api.project.onChanged(() => refreshProjectInfo())
-  }, [])
+  }, [refreshProjectInfo])
+
+  // Ask the model for prompts tailored to the current repo state + the user's
+  // recent intents whenever the snapshot changes. Best-effort: on any failure
+  // (offline, signed out, empty) we fall back to the local heuristics below.
+  useEffect(() => {
+    // When suggestions are disabled the list is hidden anyway, so leave any
+    // existing state untouched rather than triggering a synchronous re-render.
+    if (!showSuggestions) return
+    let cancelled = false
+    void window.api.suggest
+      .home({
+        branch,
+        dirtyCount,
+        commits: commits.map((c) => ({ subject: c.subject, relativeDate: c.relativeDate })),
+        files: projectFiles,
+        recentIntents: recentIntents()
+      })
+      .then((res) => {
+        if (!cancelled) setAiSuggestions(res.ok ? res.suggestions : [])
+      })
+      .catch(() => {
+        if (!cancelled) setAiSuggestions([])
+      })
+    return (): void => {
+      cancelled = true
+    }
+  }, [showSuggestions, branch, dirtyCount, commits, projectFiles])
 
   const projectName = projectPath ? basename(projectPath) : '…'
   const projectDisplay = projectPath ? tildeify(projectPath) : ''
   const greetingName = settings.userName.trim() || osName
-  const suggestions = projectFiles.length > 0 ? projectSuggestions(projectFiles) : SUGGESTIONS
+  const suggestions =
+    aiSuggestions.length > 0
+      ? aiSuggestions.map((label) => ({ icon: Sparkles, label }))
+      : buildSuggestions(projectFiles, commits, branch)
 
   const handleSuggestion = (s: Suggestion): void => {
-    if (s.action === 'open-connect-tool') {
-      onOpenConnectTool?.()
-      return
-    }
     onDraftChange(s.label)
   }
 

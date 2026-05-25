@@ -13,6 +13,7 @@ import { registerGitIpc } from './git'
 import { refreshMcpLockFile, registerMcpIpc, startMcpServer, stopMcpServer } from './mcp'
 import { getActiveProjectCwd, onActiveProjectCwdChanged, registerProjectIpc } from './project'
 import { registerSandboxIpc, stopAllSandboxes } from './sandbox'
+import { registerSuggestionsIpc } from './suggestions'
 import { getSystemSettings, loadSystemSettings, setSystemSettings, wireCloseToTray } from './system'
 import { killAllPtys, registerTerminalIpc } from './terminal'
 import { createTray, destroyTray, setTrayEnabled, setTrayRecentChats, setTrayUsage } from './tray'
@@ -399,6 +400,7 @@ app.whenReady().then(() => {
   registerAuthIpc()
   void initAuth()
   registerChatIpc()
+  registerSuggestionsIpc()
   registerBillingIpc()
   registerFsIpc(projectCwd)
   registerTerminalIpc(projectCwd)

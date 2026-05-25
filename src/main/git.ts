@@ -33,6 +33,13 @@ export interface GitWorktree {
   current: boolean
 }
 
+export interface GitCommit {
+  hash: string
+  subject: string
+  author: string
+  relativeDate: string
+}
+
 type Result<T = void> = { ok: true; data: T } | { ok: false; error: string }
 
 const BranchNameSchema = z
@@ -212,6 +219,29 @@ function worktrees(cwd: string): Result<{ worktrees: GitWorktree[] }> {
   return { ok: true, data: { worktrees: parseWorktrees(r.data, repoRoot(cwd)) } }
 }
 
+function recentCommits(cwd: string, limit = 10): Result<{ commits: GitCommit[] }> {
+  if (!isRepo(cwd)) return { ok: false, error: 'not a git repository' }
+  const n = Math.max(1, Math.min(50, Math.floor(limit)))
+  // Unit-separator (\x1f) between fields, record-separator (\x1e) between commits —
+  // both are safe against newlines or tabs appearing inside a subject.
+  const r = run(cwd, ['log', `-n${n}`, '--no-merges', '--pretty=format:%H%x1f%s%x1f%an%x1f%ar%x1e'])
+  if (!r.ok) return r
+  const commits: GitCommit[] = r.data
+    .split('\x1e')
+    .map((rec) => rec.trim())
+    .filter(Boolean)
+    .map((rec) => {
+      const [hash, subject, author, relativeDate] = rec.split('\x1f')
+      return {
+        hash: hash ?? '',
+        subject: subject ?? '',
+        author: author ?? '',
+        relativeDate: relativeDate ?? ''
+      }
+    })
+  return { ok: true, data: { commits } }
+}
+
 function checkout(cwd: string, name: string): Result {
   if (!isRepo(cwd)) return { ok: false, error: 'not a git repository' }
   const r = run(cwd, ['checkout', name])
@@ -298,6 +328,9 @@ export function registerGitIpc(getCwd: () => string): void {
   ipcMain.handle('git:status', () => status(getCwd()))
   ipcMain.handle('git:branches', () => branches(getCwd()))
   ipcMain.handle('git:worktrees', () => worktrees(getCwd()))
+  ipcMain.handle('git:recentCommits', (_e, p?: { limit?: number }) =>
+    recentCommits(getCwd(), p?.limit ?? 10)
+  )
   ipcMain.handle('git:checkout', (_e, { name }: { name: string }) => checkout(getCwd(), name))
   ipcMain.handle('git:createBranch', (_e, { name }: { name: string }) =>
     createBranch(getCwd(), name)

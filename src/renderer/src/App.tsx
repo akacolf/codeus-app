@@ -50,7 +50,6 @@ function App(): React.JSX.Element {
   const [searchOpen, setSearchOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
-  const [connectOpen, setConnectOpen] = useState(false)
   const [gitOpen, setGitOpen] = useState(false)
   const [terminalOpen, setTerminalOpen] = useState(false)
   const [confirmRestart, setConfirmRestart] = useState(false)
@@ -349,7 +348,6 @@ function App(): React.JSX.Element {
               onSubmit={sendMessage}
               onOpenTerminal={() => setTerminalOpen(true)}
               onReveal={revealInFolder}
-              onOpenConnectTool={() => setConnectOpen(true)}
               onOpenGit={() => setGitOpen(true)}
               branch={gitInfo?.branch ?? null}
               dirtyCount={gitInfo?.dirtyCount ?? 0}
@@ -397,40 +395,6 @@ function App(): React.JSX.Element {
             </DialogHeader>
             <p className="text-sm leading-relaxed text-foreground/85">
               Built by Quantum Club for focused agentic software work.
-            </p>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog open={connectOpen} onOpenChange={setConnectOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Connect a tool</DialogTitle>
-              <DialogDescription>
-                Tool integrations are on the roadmap — first-class connectors aren’t live yet.
-              </DialogDescription>
-            </DialogHeader>
-            <ul className="flex flex-col gap-2 text-sm text-foreground/85">
-              <li className="rounded-lg bg-foreground/5 px-3 py-2">
-                Linear — pull issues, file tickets from a thread
-              </li>
-              <li className="rounded-lg bg-foreground/5 px-3 py-2">
-                GitHub — open PRs, comment, run checks
-              </li>
-              <li className="rounded-lg bg-foreground/5 px-3 py-2">
-                Vercel — deploy, inspect logs, read env
-              </li>
-            </ul>
-            <p className="text-xs text-muted-foreground">
-              Want one of these sooner?{' '}
-              <a
-                href="https://github.com/atomicfield/qc-codeus/issues"
-                target="_blank"
-                rel="noreferrer noopener"
-                className="underline underline-offset-2"
-              >
-                Open an issue
-              </a>
-              .
             </p>
           </DialogContent>
         </Dialog>
