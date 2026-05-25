@@ -238,9 +238,6 @@ export function Home({
     void window.api.fs.findFiles('', 120).then((res) => {
       setProjectFiles(res.ok ? res.files : [])
     })
-    void window.api.git.recentCommits(10).then((res) => {
-      setCommits(res.ok ? res.data.commits : [])
-    })
   }, [])
 
   useEffect(() => {
@@ -249,14 +246,15 @@ export function Home({
     return window.api.project.onChanged(() => refreshProjectInfo())
   }, [refreshProjectInfo])
 
-  // A branch checkout doesn't fire project:onChanged, so re-pull commits when
-  // the branch changes. This updates the HEAD SHA the suggestion request keys
-  // on, so switching branches surfaces suggestions for the new branch.
+  // Commits drive the suggestion cache key (HEAD SHA), so re-pull them whenever
+  // the project or branch changes. A branch checkout doesn't fire
+  // project:onChanged, and two projects can share a branch name, so both
+  // dependencies are needed to keep the SHA current.
   useEffect(() => {
     void window.api.git.recentCommits(10).then((res) => {
       setCommits(res.ok ? res.data.commits : [])
     })
-  }, [branch])
+  }, [projectPath, branch])
 
   // Ask the model for prompts tailored to the current repo state + the user's
   // recent intents whenever the snapshot changes. Best-effort: on any failure

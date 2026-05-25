@@ -4,6 +4,7 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { z } from 'zod'
 import { getAccountId } from './identity'
 import { getSessionToken } from './auth'
+import { getActiveProjectCwd } from './project'
 
 const QC_PROXY_BASE_URL = process.env.QC_PROXY_BASE_URL || 'https://api.quantumclub.sh/v1'
 
@@ -118,13 +119,13 @@ async function suggestHome(rawCtx: unknown): Promise<SuggestResult> {
   if (!parsed.success) return { ok: false, error: 'invalid context' }
 
   // Key on branch + SHA: switching branches must surface fresh suggestions even
-  // when both branches point at the same commit.
+  // when both branches point at the same commit. For a non-git or empty folder
+  // (no SHA) fall back to the project path so we still cache per session rather
+  // than re-calling the model on every home mount.
   const { headSha, branch } = parsed.data
-  const cacheKey = headSha ? `${branch ?? ''}@${headSha}` : null
-  if (cacheKey) {
-    const cached = cacheGet(cacheKey)
-    if (cached) return { ok: true, suggestions: cached }
-  }
+  const cacheKey = headSha ? `${branch ?? ''}@${headSha}` : `cwd:${getActiveProjectCwd()}`
+  const cached = cacheGet(cacheKey)
+  if (cached) return { ok: true, suggestions: cached }
 
   const sessionToken = getSessionToken()
   if (!sessionToken) return { ok: false, error: 'signed out' }
@@ -165,7 +166,7 @@ async function suggestHome(rawCtx: unknown): Promise<SuggestResult> {
 
     const suggestions = parseSuggestions(text)
     if (suggestions.length === 0) return { ok: false, error: 'no suggestions' }
-    if (cacheKey) cacheSet(cacheKey, suggestions)
+    cacheSet(cacheKey, suggestions)
     return { ok: true, suggestions }
   } catch (e) {
     return { ok: false, error: (e as Error)?.message || 'suggestion failed' }
