@@ -1,5 +1,17 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { autoUpdater, type UpdateInfo, type ProgressInfo } from 'electron-updater'
+
+// macOS auto-update via Squirrel.Mac requires the app bundle to carry a valid
+// Developer ID signature — it refuses to swap an unsigned/ad-hoc build, which
+// is all we can ship without a paid Apple Developer account. So on macOS we
+// don't self-install: we still *detect* new versions and surface them, but the
+// "install" action opens the download page for a manual re-download. On
+// Windows (NSIS) and Linux (AppImage) unsigned auto-update works, so those
+// keep the full silent download + quitAndInstall flow.
+const MAC_MANUAL_UPDATE = process.platform === 'darwin'
+const DOWNLOAD_PAGE = 'https://quantumclub.sh/codeus'
+
+export const updaterCanSelfInstall = !MAC_MANUAL_UPDATE
 
 export type UpdaterState =
   | { kind: 'idle' }
@@ -47,17 +59,25 @@ export function registerUpdater(): void {
     }
   })
   ipcMain.handle('updater:quitAndInstall', () => {
+    // On macOS we can't self-install (see MAC_MANUAL_UPDATE) — open the
+    // download page so the user can grab the new build manually.
+    if (MAC_MANUAL_UPDATE) {
+      void shell.openExternal(DOWNLOAD_PAGE)
+      return { ok: true }
+    }
     if (!app.isPackaged) return { ok: false, error: 'updates disabled in dev' }
     autoUpdater.quitAndInstall()
     return { ok: true }
   })
+  ipcMain.handle('updater:canSelfInstall', () => updaterCanSelfInstall)
 
   // Dev runs have no installer to update — skip the autoUpdater wiring but
   // leave the IPC surface intact above.
   if (!app.isPackaged) return
 
-  autoUpdater.autoDownload = true
-  autoUpdater.autoInstallOnAppQuit = true
+  // macOS: detect only, never auto-download a payload we can't install.
+  autoUpdater.autoDownload = !MAC_MANUAL_UPDATE
+  autoUpdater.autoInstallOnAppQuit = !MAC_MANUAL_UPDATE
 
   autoUpdater.on('checking-for-update', () => {
     if (userInitiated) broadcast({ kind: 'checking' })

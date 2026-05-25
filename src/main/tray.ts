@@ -4,7 +4,18 @@ import trayIconTemplate from '../../resources/trayIconTemplate.png?asset'
 import trayIconTemplate2x from '../../resources/trayIconTemplate@2x.png?asset'
 import trayIcon from '../../resources/trayIcon.png?asset'
 
-export type TrayCommand = 'new-chat' | 'open-terminal' | 'reveal-project'
+export type TrayCommand =
+  | 'new-chat'
+  | 'open-terminal'
+  | 'reveal-project'
+  | 'open-chat'
+  | 'check-updates'
+  | 'restart'
+
+export interface TrayRecentChat {
+  id: string
+  title: string
+}
 
 export interface TrayDeps {
   getWindow: () => BrowserWindow | null
@@ -13,6 +24,11 @@ export interface TrayDeps {
 
 let tray: Tray | null = null
 let deps: TrayDeps | null = null
+// Pushed from the renderer (chats + usage live in renderer localStorage, which
+// the main process can't read directly). Kept here so buildMenu() can render
+// them synchronously when the menu opens.
+let recentChats: TrayRecentChat[] = []
+let usageLabel: string | null = null
 
 function buildIcon(): Electron.NativeImage {
   if (process.platform === 'darwin') {
@@ -45,21 +61,32 @@ function showAndFocus(): void {
   win.focus()
 }
 
-function sendCommand(cmd: TrayCommand): void {
+// `check-updates` surfaces the in-app banner without stealing focus; everything
+// else implies the user wants the window up front, so we show + focus first.
+function sendCommand(cmd: TrayCommand, payload?: string): void {
   const win = deps?.getWindow()
   if (!win) return
-  showAndFocus()
-  win.webContents.send('tray:command', cmd)
+  if (cmd !== 'check-updates') showAndFocus()
+  win.webContents.send('tray:command', cmd, payload)
 }
 
 function buildMenu(): Menu {
   const win = deps?.getWindow()
   const isShowing = !!win && win.isVisible() && !win.isMinimized()
+
+  const recentItems: Electron.MenuItemConstructorOptions[] =
+    recentChats.length === 0
+      ? [{ label: 'No recent chats', enabled: false }]
+      : recentChats.slice(0, 8).map((c) => ({
+          label: c.title.length > 48 ? c.title.slice(0, 47) + '…' : c.title,
+          click: () => sendCommand('open-chat', c.id)
+        }))
+
   return Menu.buildFromTemplate([
     { label: 'QC Codeus', enabled: false },
     { type: 'separator' },
     {
-      label: isShowing ? 'Hide QC Codeus' : 'Show QC Codeus',
+      label: isShowing ? 'Hide QC Codeus' : 'Open QC Codeus',
       click: () => {
         const w = deps?.getWindow()
         if (!w) return
@@ -69,6 +96,8 @@ function buildMenu(): Menu {
     },
     { type: 'separator' },
     { label: 'New chat', click: () => sendCommand('new-chat') },
+    { label: 'Recent chats', submenu: recentItems },
+    { type: 'separator' },
     { label: 'Open terminal', click: () => sendCommand('open-terminal') },
     {
       label: 'Reveal project in Finder',
@@ -77,6 +106,10 @@ function buildMenu(): Menu {
       }
     },
     { type: 'separator' },
+    { label: usageLabel ?? 'Usage unavailable', enabled: false },
+    { label: 'Check for updates…', click: () => sendCommand('check-updates') },
+    { type: 'separator' },
+    { label: 'Restart QC Codeus', click: () => sendCommand('restart') },
     { label: 'Quit QC Codeus', click: () => app.quit() }
   ])
 }
@@ -96,6 +129,16 @@ export function createTray(initial: TrayDeps): void {
   // "Show/Hide" stays accurate without us subscribing to every window event.
   tray.on('mouse-enter', refreshMenu)
   tray.on('right-click', refreshMenu)
+}
+
+export function setTrayRecentChats(chats: TrayRecentChat[]): void {
+  recentChats = chats
+  refreshMenu()
+}
+
+export function setTrayUsage(label: string | null): void {
+  usageLabel = label
+  refreshMenu()
 }
 
 export function destroyTray(): void {

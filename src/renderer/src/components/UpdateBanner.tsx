@@ -16,20 +16,16 @@ export function UpdateBanner(): React.JSX.Element | null {
   const [state, setState] = useState<UpdaterState>({ kind: 'idle' })
   const [dismissed, setDismissed] = useState(false)
   const [confirmRestart, setConfirmRestart] = useState(false)
+  // false on macOS (unsigned builds can't self-install) — there we offer a
+  // "Download" link to the website instead of an in-place restart.
+  const [canSelfInstall, setCanSelfInstall] = useState(true)
 
   useEffect(() => {
+    void window.api.updater.canSelfInstall().then(setCanSelfInstall)
     void window.api.updater.getState().then(setState)
     return window.api.updater.onState((s) => {
       setState(s)
-      if (
-        s.kind === 'ready' ||
-        s.kind === 'downloading' ||
-        s.kind === 'error' ||
-        s.kind === 'not-available' ||
-        s.kind === 'checking'
-      ) {
-        setDismissed(false)
-      }
+      if (s.kind !== 'idle') setDismissed(false)
     })
   }, [])
 
@@ -66,6 +62,35 @@ export function UpdateBanner(): React.JSX.Element | null {
       <Shell>
         <Check className="size-3.5 opacity-70" />
         <span>You’re up to date</span>
+        <button
+          type="button"
+          onClick={() => setDismissed(true)}
+          className="ml-1 rounded-md p-0.5 opacity-60 hover:opacity-100"
+          aria-label="Dismiss"
+        >
+          <X className="size-3" />
+        </button>
+      </Shell>
+    )
+  }
+
+  // macOS can't self-install (unsigned) — `available` is the terminal state,
+  // so offer a download link. On Windows/Linux `available` is transient
+  // (auto-download takes over), so we render nothing and wait for `ready`.
+  if (state.kind === 'available') {
+    if (canSelfInstall) return null
+    return (
+      <Shell>
+        <Download className="size-3.5 opacity-70" />
+        <span className="truncate">Update {state.version} available</span>
+        <button
+          type="button"
+          onClick={() => void window.api.updater.quitAndInstall()}
+          className="ml-2 flex items-center gap-1 rounded-md bg-foreground/10 px-2 py-0.5 text-xs font-medium hover:bg-foreground/15"
+        >
+          <Download className="size-3" />
+          Download
+        </button>
         <button
           type="button"
           onClick={() => setDismissed(true)}

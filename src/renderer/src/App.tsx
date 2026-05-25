@@ -11,6 +11,7 @@ import { TerminalPanel } from './components/TerminalPanel'
 import { Thread } from './components/Thread'
 import { Toolbar } from './components/Toolbar'
 import { TopupDialog } from './components/TopupDialog'
+import { ConfirmDialog } from './components/ConfirmDialog'
 import { UpdateBanner } from './components/UpdateBanner'
 import { Workspace } from './components/Workspace'
 import {
@@ -26,9 +27,18 @@ import { matchShortcut } from './lib/shortcuts'
 import { useThemeEffect } from './lib/theme'
 import { useChatStore } from './stores/chatStore'
 import { isDirty, useWorkspaceStore } from './stores/workspaceStore'
+import type { Chat } from './lib/chat'
+import { getUsage, subscribeUsage, type UsageSnapshot } from './lib/usage'
 
 function revealInFolder(): void {
   void window.api.revealInFolder()
+}
+
+// Recency for the tray's recent-chats list: chats have no updatedAt, so fall
+// back to the newest message timestamp (or the chat's createdAt if empty).
+function lastActivity(chat: Chat): number {
+  const last = chat.messages[chat.messages.length - 1]
+  return Math.max(chat.createdAt, last?.createdAt ?? 0)
 }
 
 const IS_MAC = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform)
@@ -43,6 +53,7 @@ function App(): React.JSX.Element {
   const [connectOpen, setConnectOpen] = useState(false)
   const [gitOpen, setGitOpen] = useState(false)
   const [terminalOpen, setTerminalOpen] = useState(false)
+  const [confirmRestart, setConfirmRestart] = useState(false)
   const [gitInfo, setGitInfo] = useState<{ branch: string | null; dirtyCount: number } | null>(null)
   const [wasWindowFocused, setWasWindowFocused] = useState(true)
   const lastNotifiedMessageIdRef = useRef<string | null>(null)
@@ -158,13 +169,40 @@ function App(): React.JSX.Element {
   }, [settings.launchAtLogin, settings.startMinimized, settings.closeToTray])
 
   useEffect(() => {
-    const unsub = window.api.tray.onCommand((cmd) => {
+    const unsub = window.api.tray.onCommand((cmd, payload) => {
       if (cmd === 'new-chat') newChat()
       else if (cmd === 'open-terminal') setTerminalOpen(true)
       else if (cmd === 'reveal-project') revealInFolder()
+      else if (cmd === 'open-chat' && payload) selectChat(payload)
+      else if (cmd === 'check-updates') void window.api.updater.check()
+      else if (cmd === 'restart') {
+        if (useWorkspaceStore.getState().open.some(isDirty)) setConfirmRestart(true)
+        else void window.api.app.restart()
+      }
     })
     return (): void => unsub()
-  }, [newChat])
+  }, [newChat, selectChat])
+
+  // Mirror the most-recently-active chats into the tray's "Recent chats"
+  // submenu. Chats live in renderer localStorage, so the main process can't
+  // read them — we push a lightweight {id,title} list whenever it changes.
+  useEffect(() => {
+    const recent = [...chats]
+      .sort((a, b) => lastActivity(b) - lastActivity(a))
+      .slice(0, 8)
+      .map((c) => ({ id: c.id, title: c.title }))
+    void window.api.tray.setRecentChats(recent)
+  }, [chats])
+
+  // Push today's local usage counters into the tray info line.
+  useEffect(() => {
+    const push = (s: UsageSnapshot): void =>
+      void window.api.tray.setUsage(
+        `Today: ${s.requests} ${s.requests === 1 ? 'request' : 'requests'}`
+      )
+    push(getUsage())
+    return subscribeUsage(push)
+  }, [])
 
   useEffect(() => {
     if (!activeChatId || !activeChatTitle) return
@@ -402,6 +440,16 @@ function App(): React.JSX.Element {
         <TopupDialog />
 
         <UpdateBanner />
+
+        <ConfirmDialog
+          open={confirmRestart}
+          onOpenChange={setConfirmRestart}
+          title="Restart with unsaved files?"
+          description="You have unsaved changes in the editor. Restarting now will discard them."
+          confirmLabel="Restart anyway"
+          destructive
+          onConfirm={() => void window.api.app.restart()}
+        />
 
         <Toaster />
 

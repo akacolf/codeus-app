@@ -193,10 +193,17 @@ function onChromeState(cb: (s: ChromeState) => void): () => void {
   }
 }
 
-export type TrayCommand = 'new-chat' | 'open-terminal' | 'reveal-project'
+export type TrayCommand =
+  | 'new-chat'
+  | 'open-terminal'
+  | 'reveal-project'
+  | 'open-chat'
+  | 'check-updates'
+  | 'restart'
 
-function onTrayCommand(cb: (cmd: TrayCommand) => void): () => void {
-  const handler = (_e: IpcRendererEvent, cmd: TrayCommand): void => cb(cmd)
+function onTrayCommand(cb: (cmd: TrayCommand, payload?: string) => void): () => void {
+  const handler = (_e: IpcRendererEvent, cmd: TrayCommand, payload?: string): void =>
+    cb(cmd, payload)
   ipcRenderer.on('tray:command', handler)
   return (): void => {
     ipcRenderer.off('tray:command', handler)
@@ -223,6 +230,9 @@ function onUpdaterState(cb: (s: UpdaterState) => void): () => void {
 const updaterBridge = {
   getState: (): Promise<UpdaterState> => ipcRenderer.invoke('updater:getState'),
   check: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('updater:check'),
+  // false on macOS (unsigned builds can't self-install via Squirrel) — the
+  // renderer routes the install action to the download page instead.
+  canSelfInstall: (): Promise<boolean> => ipcRenderer.invoke('updater:canSelfInstall'),
   quitAndInstall: (): Promise<{ ok: true }> => ipcRenderer.invoke('updater:quitAndInstall'),
   onState: onUpdaterState
 }
@@ -472,7 +482,14 @@ const api = {
   tray: {
     setEnabled: (enabled: boolean): Promise<{ ok: true }> =>
       ipcRenderer.invoke('tray:set-enabled', enabled),
+    setRecentChats: (chats: { id: string; title: string }[]): Promise<{ ok: true }> =>
+      ipcRenderer.invoke('tray:set-recent-chats', chats),
+    setUsage: (label: string | null): Promise<{ ok: true }> =>
+      ipcRenderer.invoke('tray:set-usage', label),
     onCommand: onTrayCommand
+  },
+  app: {
+    restart: (): Promise<{ ok: true }> => ipcRenderer.invoke('app:restart')
   },
   system: {
     get: (): Promise<{ launchAtLogin: boolean; startMinimized: boolean; closeToTray: boolean }> =>

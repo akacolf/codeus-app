@@ -15,7 +15,7 @@ import { getActiveProjectCwd, onActiveProjectCwdChanged, registerProjectIpc } fr
 import { registerSandboxIpc, stopAllSandboxes } from './sandbox'
 import { getSystemSettings, loadSystemSettings, setSystemSettings, wireCloseToTray } from './system'
 import { killAllPtys, registerTerminalIpc } from './terminal'
-import { createTray, destroyTray, setTrayEnabled } from './tray'
+import { createTray, destroyTray, setTrayEnabled, setTrayRecentChats, setTrayUsage } from './tray'
 import { registerUpdater } from './updater'
 
 interface WindowState {
@@ -351,6 +351,31 @@ app.whenReady().then(() => {
   const trayDeps = { getWindow: getMainWindow, getProjectCwd: projectCwd }
   ipcMain.handle('tray:set-enabled', (_event, enabled: boolean) => {
     setTrayEnabled(Boolean(enabled), trayDeps)
+    return { ok: true as const }
+  })
+  ipcMain.handle('tray:set-recent-chats', (_event, chats: unknown) => {
+    const list = Array.isArray(chats)
+      ? chats
+          .filter(
+            (c): c is { id: string; title: string } =>
+              !!c && typeof c.id === 'string' && typeof c.title === 'string'
+          )
+          .map((c) => ({ id: c.id, title: c.title }))
+      : []
+    setTrayRecentChats(list)
+    return { ok: true as const }
+  })
+  ipcMain.handle('tray:set-usage', (_event, label: unknown) => {
+    setTrayUsage(typeof label === 'string' && label.length > 0 ? label : null)
+    return { ok: true as const }
+  })
+  // Restart in place — used by the tray "Restart QC Codeus" item and the
+  // renderer's restart affordance. The renderer guards unsaved editor files
+  // before calling this, so we relaunch immediately.
+  ipcMain.handle('app:restart', () => {
+    isQuitting = true
+    app.relaunch()
+    app.exit(0)
     return { ok: true as const }
   })
   ipcMain.handle(
