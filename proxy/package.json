@@ -2,7 +2,7 @@
   "name": "qc-codeus-proxy",
   "version": "0.1.0",
   "private": true,
-  "description": "Quantum Club credit proxy — Anthropic-compatible /v1/messages forwarder",
+  "description": "Quantum Club credit proxy — OpenAI-compatible chat completions forwarder",
   "scripts": {
     "dev": "bun run --watch dev.ts",
     "dev:vercel": "vercel dev",

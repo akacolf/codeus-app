@@ -233,7 +233,7 @@ export type UpdaterState =
   | { kind: 'checking' }
   | { kind: 'available'; version: string }
   | { kind: 'not-available' }
-  | { kind: 'downloading'; percent: number }
+  | { kind: 'downloading'; percent: number; transferred?: number; total?: number }
   | { kind: 'ready'; version: string }
   | { kind: 'error'; message: string }
 
@@ -248,6 +248,7 @@ function onUpdaterState(cb: (s: UpdaterState) => void): () => void {
 const updaterBridge = {
   getState: (): Promise<UpdaterState> => ipcRenderer.invoke('updater:getState'),
   check: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('updater:check'),
+  cancel: (): Promise<{ ok: true }> => ipcRenderer.invoke('updater:cancel'),
   // false on macOS (unsigned builds can't self-install via Squirrel) — the
   // renderer routes the install action to the download page instead.
   canSelfInstall: (): Promise<boolean> => ipcRenderer.invoke('updater:canSelfInstall'),

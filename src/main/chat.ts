@@ -50,9 +50,10 @@ const UndoWriteParamsSchema = z.object({ token: z.string().min(1) })
 
 type StartParams = z.infer<typeof StartParamsSchema>
 
-// Vercel AI Gateway model IDs (provider/model format). Adjust if a model is
-// renamed upstream — see https://vercel.com/ai-gateway/models for the current list.
-// Lineup is biased toward cheap-but-capable models for the research preview.
+// QC proxy model IDs. They are currently Vercel-style provider/model slugs for
+// desktop compatibility; the proxy normalizes them for LLM Gateway when that is
+// the selected upstream. Lineup is biased toward cheap-but-capable models for
+// the research preview.
 const MODEL_MAP: Record<string, string> = {
   'sonnet-4.6': 'anthropic/claude-sonnet-4.6',
   'haiku-4.5': 'anthropic/claude-haiku-4.5',
@@ -65,7 +66,7 @@ const QC_PROXY_BASE_URL = process.env.QC_PROXY_BASE_URL || 'https://api.quantumc
 // Tool-loop budget. Real refactors routinely chain: list dir → read several
 // files → write_file → typecheck → fix errors → write_file → typecheck. A
 // cap of 10 truncates the model mid-fix; 25 covers typical multi-step work
-// while still bounding runaway loops. AI Gateway pricing still constrains
+// while still bounding runaway loops. Gateway pricing still constrains
 // cost via per-token billing.
 const MAX_TOOL_STEPS = 25
 const MAX_FILE_BYTES = 1_000_000 // 1MB cap for tool reads

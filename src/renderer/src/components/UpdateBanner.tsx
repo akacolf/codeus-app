@@ -1,22 +1,53 @@
 import { useEffect, useState } from 'react'
-import { AlertCircle, Check, Download, RefreshCw, X } from 'lucide-react'
+import { AlertCircle, Check, Download, RefreshCw } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle
+} from '@renderer/components/ui/dialog'
 import { ConfirmDialog } from './ConfirmDialog'
 import { isDirty, useWorkspaceStore } from '@renderer/stores/workspaceStore'
+import logoBlack from '../../../../resources/logo_black.svg'
 
 type UpdaterState =
   | { kind: 'idle' }
   | { kind: 'checking' }
   | { kind: 'available'; version: string }
   | { kind: 'not-available' }
-  | { kind: 'downloading'; percent: number }
+  | { kind: 'downloading'; percent: number; transferred?: number; total?: number }
   | { kind: 'ready'; version: string }
   | { kind: 'error'; message: string }
+
+type PrimaryAction = {
+  label: string
+  onClick: () => void
+  disabled?: boolean
+}
+
+const percentForState = (state: UpdaterState, installing: boolean): number | null => {
+  if (installing) return 16
+  if (state.kind === 'checking') return 26
+  if (state.kind === 'available') return 100
+  if (state.kind === 'not-available') return 100
+  if (state.kind === 'downloading') return Math.max(2, Math.min(100, state.percent))
+  if (state.kind === 'ready') return 100
+  if (state.kind === 'error') return null
+  return null
+}
+
+const formatBytes = (value?: number): string | null => {
+  if (!Number.isFinite(value)) return null
+  const mb = (value as number) / 1_000_000
+  return `${mb.toFixed(mb >= 10 ? 1 : 2)} MB`
+}
 
 export function UpdateBanner(): React.JSX.Element | null {
   const [state, setState] = useState<UpdaterState>({ kind: 'idle' })
   const [dismissed, setDismissed] = useState(false)
   const [confirmRestart, setConfirmRestart] = useState(false)
-  // false on macOS (unsigned builds can't self-install) — there we offer a
+  const [installing, setInstalling] = useState(false)
+  // false on macOS (unsigned builds can't self-install) - there we offer a
   // "Download" link to the website instead of an in-place restart.
   const [canSelfInstall, setCanSelfInstall] = useState(true)
 
@@ -26,16 +57,20 @@ export function UpdateBanner(): React.JSX.Element | null {
     return window.api.updater.onState((s) => {
       setState(s)
       if (s.kind !== 'idle') setDismissed(false)
+      if (s.kind !== 'ready') setInstalling(false)
     })
   }, [])
 
-  // Auto-dismiss the "up to date" confirmation so it doesn't linger after a
-  // user-initiated check. Anything actionable (ready, downloading, error) stays.
   useEffect(() => {
     if (state.kind !== 'not-available') return
     const t = window.setTimeout(() => setDismissed(true), 4000)
     return () => window.clearTimeout(t)
   }, [state])
+
+  const dismiss = (): void => {
+    if (state.kind === 'downloading') void window.api.updater.cancel()
+    setDismissed(true)
+  }
 
   const startRestart = (): void => {
     const open = useWorkspaceStore.getState().open
@@ -43,142 +78,176 @@ export function UpdateBanner(): React.JSX.Element | null {
       setConfirmRestart(true)
       return
     }
+    setInstalling(true)
     void window.api.updater.quitAndInstall()
   }
 
-  if (dismissed) return null
-
-  if (state.kind === 'checking') {
-    return (
-      <Shell>
-        <RefreshCw className="size-3.5 animate-spin opacity-70" />
-        <span>Checking for updates…</span>
-      </Shell>
-    )
+  const retry = (): void => {
+    setDismissed(false)
+    void window.api.updater.check()
   }
 
-  if (state.kind === 'not-available') {
-    return (
-      <Shell>
-        <Check className="size-3.5 opacity-70" />
-        <span>You’re up to date</span>
-        <button
-          type="button"
-          onClick={() => setDismissed(true)}
-          className="ml-1 rounded-md p-0.5 opacity-60 hover:opacity-100"
-          aria-label="Dismiss"
+  if (state.kind === 'idle' && !installing) return null
+
+  const open = !dismissed
+  const primaryAction = primaryActionForState({
+    state,
+    installing,
+    canSelfInstall,
+    dismiss,
+    retry,
+    startRestart
+  })
+  const percent = percentForState(state, installing)
+  const title = installing ? 'Extracting update...' : titleForState(state, canSelfInstall)
+  const detail = detailForState(state, canSelfInstall)
+  const icon = iconForState(state, installing)
+  const transferred = state.kind === 'downloading' ? formatBytes(state.transferred) : null
+  const total = state.kind === 'downloading' ? formatBytes(state.total) : null
+  const progressLabel = transferred && total ? `${transferred} of ${total}` : null
+
+  return (
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) dismiss()
+        }}
+      >
+        <DialogContent
+          showCloseButton={false}
+          className="w-[min(92vw,720px)] gap-0 overflow-hidden rounded-[22px] bg-card p-0 shadow-2xl sm:max-w-none"
         >
-          <X className="size-3" />
-        </button>
-      </Shell>
-    )
-  }
+          <div className="flex h-[52px] items-center justify-center bg-foreground/8 px-6">
+            <DialogTitle className="text-xl font-semibold tracking-normal text-foreground/62">
+              Updating QC Codeus
+            </DialogTitle>
+            <DialogDescription className="sr-only">{title}</DialogDescription>
+          </div>
 
-  // macOS can't self-install (unsigned) — `available` is the terminal state,
-  // so offer a download link. On Windows/Linux `available` is transient
-  // (auto-download takes over), so we render nothing and wait for `ready`.
+          <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-6 px-9 py-8 sm:grid-cols-[112px_minmax(0,1fr)]">
+            <div className="flex size-[88px] items-center justify-center rounded-[24px] bg-primary shadow-lg sm:size-[112px]">
+              <img src={logoBlack} alt="" className="size-14 sm:size-[72px]" />
+            </div>
+
+            <div className="min-w-0 pt-2">
+              <div className="flex items-center gap-2 text-2xl font-semibold text-foreground/92">
+                {icon}
+                <span className="truncate">{title}</span>
+              </div>
+
+              {percent !== null && (
+                <div className="mt-7 h-2.5 w-full overflow-hidden rounded-full bg-foreground/15">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all duration-300 ease-out"
+                    style={{ width: `${percent}%` }}
+                  />
+                </div>
+              )}
+
+              <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-h-8 text-xl font-medium text-foreground/82">
+                  {progressLabel ?? detail}
+                </div>
+
+                {primaryAction && (
+                  <button
+                    type="button"
+                    onClick={primaryAction.onClick}
+                    disabled={primaryAction.disabled}
+                    className="h-10 min-w-40 rounded-lg bg-foreground/18 px-6 text-base font-semibold text-foreground/88 transition hover:bg-foreground/24 disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    {primaryAction.label}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={confirmRestart}
+        onOpenChange={setConfirmRestart}
+        title="Restart with unsaved files?"
+        description="You have unsaved changes in the editor. Restarting now will discard them."
+        confirmLabel="Restart anyway"
+        destructive
+        onConfirm={() => {
+          setInstalling(true)
+          void window.api.updater.quitAndInstall()
+        }}
+      />
+    </>
+  )
+}
+
+function titleForState(state: UpdaterState, canSelfInstall: boolean): string {
+  if (state.kind === 'checking') return 'Checking for updates...'
   if (state.kind === 'available') {
-    if (canSelfInstall) return null
-    return (
-      <Shell>
-        <Download className="size-3.5 opacity-70" />
-        <span className="truncate">Update {state.version} available</span>
-        <button
-          type="button"
-          onClick={() => void window.api.updater.quitAndInstall()}
-          className="ml-2 flex items-center gap-1 rounded-md bg-foreground/10 px-2 py-0.5 text-xs font-medium hover:bg-foreground/15"
-        >
-          <Download className="size-3" />
-          Download
-        </button>
-        <button
-          type="button"
-          onClick={() => setDismissed(true)}
-          className="ml-1 rounded-md p-0.5 opacity-60 hover:opacity-100"
-          aria-label="Dismiss"
-        >
-          <X className="size-3" />
-        </button>
-      </Shell>
-    )
+    if (canSelfInstall) return `Preparing update ${state.version}...`
+    return `Update ${state.version} available`
   }
+  if (state.kind === 'not-available') return 'QC Codeus is up to date'
+  if (state.kind === 'downloading') return 'Downloading update...'
+  if (state.kind === 'ready') return `Update ${state.version} ready`
+  if (state.kind === 'error') return 'Update check failed'
+  return 'Updating QC Codeus'
+}
 
-  if (state.kind === 'downloading') {
-    return (
-      <Shell>
-        <Download className="size-3.5 opacity-70" />
-        <span>Downloading update… {state.percent}%</span>
-      </Shell>
-    )
+function detailForState(state: UpdaterState, canSelfInstall: boolean): string {
+  if (state.kind === 'checking') return 'Contacting the update server'
+  if (state.kind === 'available') {
+    if (canSelfInstall) return 'Starting download'
+    return 'Download the latest build to update this Mac'
   }
+  if (state.kind === 'not-available') return 'No update is available'
+  if (state.kind === 'downloading') return `${state.percent}% complete`
+  if (state.kind === 'ready') return 'Restart QC Codeus to finish installing'
+  if (state.kind === 'error') return state.message
+  return ''
+}
 
-  if (state.kind === 'ready') {
-    return (
-      <>
-        <Shell>
-          <span className="truncate">Update {state.version} ready</span>
-          <button
-            type="button"
-            onClick={startRestart}
-            className="ml-2 flex items-center gap-1 rounded-md bg-foreground/10 px-2 py-0.5 text-xs font-medium hover:bg-foreground/15"
-          >
-            <RefreshCw className="size-3" />
-            Restart
-          </button>
-          <button
-            type="button"
-            onClick={() => setDismissed(true)}
-            className="ml-1 rounded-md p-0.5 opacity-60 hover:opacity-100"
-            aria-label="Dismiss"
-          >
-            <X className="size-3" />
-          </button>
-        </Shell>
-        <ConfirmDialog
-          open={confirmRestart}
-          onOpenChange={setConfirmRestart}
-          title="Restart with unsaved files?"
-          description="You have unsaved changes in the editor. Restarting now will discard them."
-          confirmLabel="Restart anyway"
-          destructive
-          onConfirm={() => void window.api.updater.quitAndInstall()}
-        />
-      </>
-    )
+function iconForState(state: UpdaterState, installing: boolean): React.ReactNode {
+  if (installing || state.kind === 'checking') {
+    return <RefreshCw className="size-5 shrink-0 animate-spin text-foreground/55" />
   }
-
+  if (state.kind === 'available' || state.kind === 'downloading') {
+    return <Download className="size-5 shrink-0 text-foreground/55" />
+  }
+  if (state.kind === 'not-available' || state.kind === 'ready') {
+    return <Check className="size-5 shrink-0 text-foreground/55" />
+  }
   if (state.kind === 'error') {
-    return (
-      <Shell>
-        <AlertCircle className="size-3.5 opacity-70" />
-        <span className="truncate">Update check failed</span>
-        <button
-          type="button"
-          onClick={() => void window.api.updater.check()}
-          className="ml-2 flex items-center gap-1 rounded-md bg-foreground/10 px-2 py-0.5 text-xs font-medium hover:bg-foreground/15"
-        >
-          <RefreshCw className="size-3" />
-          Try again
-        </button>
-        <button
-          type="button"
-          onClick={() => setDismissed(true)}
-          className="ml-1 rounded-md p-0.5 opacity-60 hover:opacity-100"
-          aria-label="Dismiss"
-        >
-          <X className="size-3" />
-        </button>
-      </Shell>
-    )
+    return <AlertCircle className="size-5 shrink-0 text-foreground/55" />
   }
-
   return null
 }
 
-function Shell({ children }: { children: React.ReactNode }): React.JSX.Element {
-  return (
-    <div className="pointer-events-auto fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-full bg-card/95 px-3 py-1.5 text-xs text-foreground/90 shadow-lg backdrop-blur">
-      {children}
-    </div>
-  )
+function primaryActionForState({
+  state,
+  installing,
+  canSelfInstall,
+  dismiss,
+  retry,
+  startRestart
+}: {
+  state: UpdaterState
+  installing: boolean
+  canSelfInstall: boolean
+  dismiss: () => void
+  retry: () => void
+  startRestart: () => void
+}): PrimaryAction | null {
+  if (installing) return { label: 'Cancel', onClick: dismiss, disabled: true }
+  if (state.kind === 'checking') return { label: 'Cancel', onClick: dismiss }
+  if (state.kind === 'not-available') return { label: 'Done', onClick: dismiss }
+  if (state.kind === 'downloading') return { label: 'Cancel', onClick: dismiss }
+  if (state.kind === 'error') return { label: 'Try again', onClick: retry }
+  if (state.kind === 'available') {
+    if (canSelfInstall) return { label: 'Cancel', onClick: dismiss }
+    return { label: 'Download', onClick: () => void window.api.updater.quitAndInstall() }
+  }
+  if (state.kind === 'ready') return { label: 'Restart', onClick: startRestart }
+  return null
 }

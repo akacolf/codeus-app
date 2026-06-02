@@ -1,5 +1,10 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
-import { autoUpdater, type UpdateInfo, type ProgressInfo } from 'electron-updater'
+import {
+  autoUpdater,
+  CancellationToken,
+  type UpdateInfo,
+  type ProgressInfo
+} from 'electron-updater'
 
 // macOS auto-update via Squirrel.Mac requires the app bundle to carry a valid
 // Developer ID signature — it refuses to swap an unsigned/ad-hoc build, which
@@ -18,11 +23,12 @@ export type UpdaterState =
   | { kind: 'checking' }
   | { kind: 'available'; version: string }
   | { kind: 'not-available' }
-  | { kind: 'downloading'; percent: number }
+  | { kind: 'downloading'; percent: number; transferred?: number; total?: number }
   | { kind: 'ready'; version: string }
   | { kind: 'error'; message: string }
 
 let currentState: UpdaterState = { kind: 'idle' }
+let downloadCancellationToken: CancellationToken | null = null
 // True only while a user-initiated check is in flight. Background polls run
 // silently — any error/checking transitions during them are swallowed so the
 // banner doesn't fire on app launch when no update feed is reachable.
@@ -51,12 +57,20 @@ export function registerUpdater(): void {
       return { ok: true }
     }
     try {
-      await autoUpdater.checkForUpdates()
+      const result = await autoUpdater.checkForUpdates()
+      downloadCancellationToken = result?.cancellationToken ?? null
       return { ok: true }
     } catch (err) {
       userInitiated = false
       return { ok: false, error: (err as Error).message }
     }
+  })
+  ipcMain.handle('updater:cancel', () => {
+    downloadCancellationToken?.cancel()
+    downloadCancellationToken = null
+    userInitiated = false
+    broadcast({ kind: 'idle' })
+    return { ok: true }
   })
   ipcMain.handle('updater:quitAndInstall', () => {
     // On macOS we can't self-install (see MAC_MANUAL_UPDATE) — open the
@@ -90,13 +104,25 @@ export function registerUpdater(): void {
     userInitiated = false
   })
   autoUpdater.on('download-progress', (p: ProgressInfo) =>
-    broadcast({ kind: 'downloading', percent: Math.round(p.percent) })
+    broadcast({
+      kind: 'downloading',
+      percent: Math.round(p.percent),
+      transferred: p.transferred,
+      total: p.total
+    })
   )
   autoUpdater.on('update-downloaded', (info: UpdateInfo) => {
+    downloadCancellationToken = null
     broadcast({ kind: 'ready', version: info.version })
     userInitiated = false
   })
+  autoUpdater.on('update-cancelled', () => {
+    downloadCancellationToken = null
+    userInitiated = false
+    broadcast({ kind: 'idle' })
+  })
   autoUpdater.on('error', (err: Error) => {
+    downloadCancellationToken = null
     if (userInitiated) {
       broadcast({ kind: 'error', message: err?.message ?? String(err) })
     }

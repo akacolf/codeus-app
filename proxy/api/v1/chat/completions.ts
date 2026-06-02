@@ -8,19 +8,51 @@
 //
 // The Electron client uses @ai-sdk/openai-compatible pointed at
 // `${QC_PROXY_BASE_URL}/chat/completions`. This function forwards transparently
-// to Vercel AI Gateway (https://ai-gateway.vercel.sh) using AI_GATEWAY_API_KEY.
-// AI Gateway speaks OpenAI's chat-completions format, so no translation needed.
+// to LLM Gateway (https://api.llmgateway.io) using LLM_GATEWAY_API_KEY. It can
+// still fall back to Vercel AI Gateway when AI_GATEWAY_API_KEY is configured so
+// existing free Vercel credits remain usable during migration.
 //
 // Setup:
 //   1. cd proxy && bun install
-//   2. cp .env.example .env.local — fill AI_GATEWAY_API_KEY (or leave
-//      QC_MOCK_UPSTREAM=true to stream canned replies for free)
+//   2. cp .env.example .env.local — fill LLM_GATEWAY_API_KEY, or
+//      AI_GATEWAY_API_KEY for the Vercel fallback, or leave QC_MOCK_UPSTREAM=true
+//      to stream canned replies for free
 //   3. bun run dev   (binds on :3000)
 //   4. In QC Codeus: launch with QC_PROXY_BASE_URL=http://localhost:3000/v1
 
 export const config = { runtime: 'edge' }
 
-const AI_GATEWAY_UPSTREAM = 'https://ai-gateway.vercel.sh/v1/chat/completions'
+type UpstreamId = 'llm-gateway' | 'vercel-ai-gateway'
+
+interface UpstreamConfig {
+  id: UpstreamId
+  name: string
+  url: string
+  apiKeyEnv: 'LLM_GATEWAY_API_KEY' | 'AI_GATEWAY_API_KEY'
+  apiKey?: string
+}
+
+const UPSTREAMS: Record<UpstreamId, Omit<UpstreamConfig, 'apiKey'>> = {
+  'llm-gateway': {
+    id: 'llm-gateway',
+    name: 'LLM Gateway',
+    url: 'https://api.llmgateway.io/v1/chat/completions',
+    apiKeyEnv: 'LLM_GATEWAY_API_KEY'
+  },
+  'vercel-ai-gateway': {
+    id: 'vercel-ai-gateway',
+    name: 'Vercel AI Gateway',
+    url: 'https://ai-gateway.vercel.sh/v1/chat/completions',
+    apiKeyEnv: 'AI_GATEWAY_API_KEY'
+  }
+}
+
+const LLM_GATEWAY_MODEL_ALIASES: Record<string, string> = {
+  'anthropic/claude-sonnet-4.6': 'claude-sonnet-4-6',
+  'anthropic/claude-haiku-4.5': 'claude-haiku-4-5',
+  'google/gemini-3-flash': 'gemini-3-flash-preview',
+  'openai/gpt-5-mini': 'gpt-5-mini'
+}
 
 function jsonError(status: number, message: string, type = 'invalid_request_error'): Response {
   return new Response(JSON.stringify({ error: { type, message } }), {
@@ -30,7 +62,7 @@ function jsonError(status: number, message: string, type = 'invalid_request_erro
 }
 
 const MOCK_REPLY =
-  'Hi from the QC proxy mock upstream. The pipeline is wired end-to-end — your client sent OpenAI chat-completions, the proxy authorized the request, and this canned SSE stream is being parsed by @ai-sdk/openai-compatible in the main process. Flip QC_MOCK_UPSTREAM off and set AI_GATEWAY_API_KEY to switch to real generation.'
+  'Hi from the QC proxy mock upstream. The pipeline is wired end-to-end — your client sent OpenAI chat-completions, the proxy authorized the request, and this canned SSE stream is being parsed by @ai-sdk/openai-compatible in the main process. Flip QC_MOCK_UPSTREAM off and set LLM_GATEWAY_API_KEY to switch to real generation.'
 
 function sseLine(data: object): string {
   return `data: ${JSON.stringify(data)}\n\n`
@@ -89,6 +121,43 @@ function mockOpenAIStream(model: string): Response {
   })
 }
 
+function selectUpstream(): UpstreamConfig | Response {
+  const explicit = process.env.QC_UPSTREAM_GATEWAY
+  const llmGatewayKey = process.env.LLM_GATEWAY_API_KEY
+  const vercelGatewayKey = process.env.AI_GATEWAY_API_KEY
+
+  if (explicit && explicit !== 'auto') {
+    if (explicit !== 'llm-gateway' && explicit !== 'vercel-ai-gateway') {
+      return jsonError(
+        500,
+        'Invalid QC_UPSTREAM_GATEWAY; expected auto, llm-gateway, or vercel-ai-gateway',
+        'api_error'
+      )
+    }
+    const selected = UPSTREAMS[explicit]
+    const apiKey = explicit === 'llm-gateway' ? llmGatewayKey : vercelGatewayKey
+    if (!apiKey) return jsonError(500, `Proxy missing ${selected.apiKeyEnv}`, 'api_error')
+    return { ...selected, apiKey }
+  }
+
+  if (llmGatewayKey) return { ...UPSTREAMS['llm-gateway'], apiKey: llmGatewayKey }
+  if (vercelGatewayKey) return { ...UPSTREAMS['vercel-ai-gateway'], apiKey: vercelGatewayKey }
+
+  return jsonError(500, 'Proxy missing LLM_GATEWAY_API_KEY or AI_GATEWAY_API_KEY', 'api_error')
+}
+
+async function upstreamBody(req: Request, upstream: UpstreamConfig): Promise<BodyInit | null> {
+  if (upstream.id !== 'llm-gateway') return req.body
+  const contentType = req.headers.get('content-type') ?? ''
+  if (!contentType.toLowerCase().includes('application/json')) return req.body
+
+  const body = (await req.json()) as { model?: unknown }
+  if (typeof body.model === 'string') {
+    body.model = LLM_GATEWAY_MODEL_ALIASES[body.model] ?? body.model
+  }
+  return JSON.stringify(body)
+}
+
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') return jsonError(405, 'Method not allowed')
 
@@ -110,8 +179,8 @@ export default async function handler(req: Request): Promise<Response> {
     return mockOpenAIStream(model)
   }
 
-  const upstreamKey = process.env.AI_GATEWAY_API_KEY
-  if (!upstreamKey) return jsonError(500, 'Proxy missing AI_GATEWAY_API_KEY', 'api_error')
+  const upstream = selectUpstream()
+  if (upstream instanceof Response) return upstream
 
   const fwd = new Headers()
   const passthrough = ['content-type', 'accept']
@@ -119,24 +188,25 @@ export default async function handler(req: Request): Promise<Response> {
     const v = req.headers.get(name)
     if (v) fwd.set(name, v)
   }
-  fwd.set('authorization', `Bearer ${upstreamKey}`)
+  fwd.set('authorization', `Bearer ${upstream.apiKey}`)
 
-  const upstream = await fetch(AI_GATEWAY_UPSTREAM, {
+  const res = await fetch(upstream.url, {
     method: 'POST',
     headers: fwd,
-    body: req.body,
+    body: await upstreamBody(req, upstream),
     // @ts-expect-error duplex is a valid RequestInit option for streaming bodies
     duplex: 'half',
     signal: req.signal
   })
 
-  const out = new Headers(upstream.headers)
+  const out = new Headers(res.headers)
   out.delete('content-encoding')
   out.delete('content-length')
+  out.set('x-qc-upstream', upstream.id)
 
-  return new Response(upstream.body, {
-    status: upstream.status,
-    statusText: upstream.statusText,
+  return new Response(res.body, {
+    status: res.status,
+    statusText: res.statusText,
     headers: out
   })
 }
