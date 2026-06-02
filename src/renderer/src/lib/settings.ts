@@ -233,7 +233,7 @@ const DEFAULTS: Settings = {
   uiScale: 'default',
   editorFontSize: 13,
   terminalFontSize: 13,
-  reducedMotion: false,
+  reducedMotion: true,
   chatDensity: 'comfortable',
   composerSize: 'default',
   sidebarWidth: 'default',

@@ -23,12 +23,12 @@ export function Splash({ durationMs = 1400, onDone }: SplashProps): React.JSX.El
   return (
     <div
       className={cn(
-        'absolute inset-0 z-50 flex items-center justify-center bg-background transition-opacity duration-300',
+        'absolute inset-0 z-50 flex items-center justify-center bg-background',
         leaving ? 'opacity-0' : 'opacity-100'
       )}
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     >
-      <Logo aria-hidden="true" className="size-32 animate-in fade-in zoom-in-95 duration-500" />
+      <Logo aria-hidden="true" className="size-32" />
     </div>
   )
 }

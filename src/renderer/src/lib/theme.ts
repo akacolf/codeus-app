@@ -23,12 +23,10 @@ function apply(resolved: ResolvedTheme): void {
 
 function applyAppearance({
   uiScale,
-  reducedMotion,
   fontFamily,
   pointerCursors
 }: {
   uiScale: ReturnType<typeof useSettings>['settings']['uiScale']
-  reducedMotion: boolean
   fontFamily: ReturnType<typeof useSettings>['settings']['fontFamily']
   pointerCursors: boolean
 }): void {
@@ -40,7 +38,7 @@ function applyAppearance({
       ? "'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
       : "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
   )
-  root.classList.toggle('motion-reduced', reducedMotion)
+  root.classList.add('motion-reduced')
   root.classList.toggle('pointer-cursors', pointerCursors)
 }
 
@@ -59,11 +57,10 @@ export function useThemeEffect(): void {
   useEffect(() => {
     applyAppearance({
       uiScale: settings.uiScale,
-      reducedMotion: settings.reducedMotion,
       fontFamily: settings.fontFamily,
       pointerCursors: settings.pointerCursors
     })
-  }, [settings.uiScale, settings.reducedMotion, settings.fontFamily, settings.pointerCursors])
+  }, [settings.uiScale, settings.fontFamily, settings.pointerCursors])
 
   useEffect(() => {
     if (settings.theme !== 'system') return
