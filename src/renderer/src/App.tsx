@@ -1,19 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { GitPanel } from './components/GitPanel'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Home } from './components/Home'
-import { SearchChatsDialog } from './components/SearchChatsDialog'
-import { SettingsPage } from './components/SettingsDialog'
-import { ShortcutsDialog } from './components/ShortcutsDialog'
 import { Sidebar } from './components/Sidebar'
 import { SignInGate } from './components/SignInGate'
 import { Splash } from './components/Splash'
-import { TerminalPanel } from './components/TerminalPanel'
 import { Thread } from './components/Thread'
 import { Toolbar } from './components/Toolbar'
-import { TopupDialog } from './components/TopupDialog'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { UpdateBanner } from './components/UpdateBanner'
-import { Workspace } from './components/Workspace'
 import {
   Dialog,
   DialogContent,
@@ -29,6 +22,33 @@ import { useChatStore } from './stores/chatStore'
 import { isDirty, useWorkspaceStore } from './stores/workspaceStore'
 import type { Chat } from './lib/chat'
 import { getUsage, subscribeUsage, type UsageSnapshot } from './lib/usage'
+import { useBillingStore } from './stores/billingStore'
+
+const GitPanel = lazy(() =>
+  import('./components/GitPanel').then((module) => ({ default: module.GitPanel }))
+)
+const SearchChatsDialog = lazy(() =>
+  import('./components/SearchChatsDialog').then((module) => ({
+    default: module.SearchChatsDialog
+  }))
+)
+const SettingsPage = lazy(() =>
+  import('./components/SettingsDialog').then((module) => ({ default: module.SettingsPage }))
+)
+const ShortcutsDialog = lazy(() =>
+  import('./components/ShortcutsDialog').then((module) => ({
+    default: module.ShortcutsDialog
+  }))
+)
+const TerminalPanel = lazy(() =>
+  import('./components/TerminalPanel').then((module) => ({ default: module.TerminalPanel }))
+)
+const TopupDialog = lazy(() =>
+  import('./components/TopupDialog').then((module) => ({ default: module.TopupDialog }))
+)
+const Workspace = lazy(() =>
+  import('./components/Workspace').then((module) => ({ default: module.Workspace }))
+)
 
 function revealInFolder(): void {
   void window.api.revealInFolder()
@@ -43,6 +63,10 @@ function lastActivity(chat: Chat): number {
 
 const IS_MAC = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform)
 
+function SurfaceFallback(): React.JSX.Element {
+  return <div className="h-full w-full bg-background" />
+}
+
 function App(): React.JSX.Element {
   const { settings } = useSettings()
   const [booting, setBooting] = useState(true)
@@ -52,6 +76,7 @@ function App(): React.JSX.Element {
   const [aboutOpen, setAboutOpen] = useState(false)
   const [gitOpen, setGitOpen] = useState(false)
   const [terminalOpen, setTerminalOpen] = useState(false)
+  const [terminalMounted, setTerminalMounted] = useState(false)
   const [confirmRestart, setConfirmRestart] = useState(false)
   const [gitInfo, setGitInfo] = useState<{ branch: string | null; dirtyCount: number } | null>(null)
   const [wasWindowFocused, setWasWindowFocused] = useState(true)
@@ -79,6 +104,7 @@ function App(): React.JSX.Element {
   const selectChat = useChatStore((s) => s.selectChat)
   const sendMessageAction = useChatStore((s) => s.sendMessage)
   const queueMessageAction = useChatStore((s) => s.queueMessage)
+  const topupOpen = useBillingStore((s) => s.topupOpen)
 
   const activeChat = view.type === 'chat' ? (chats.find((c) => c.id === view.chatId) ?? null) : null
   const activeChatId = activeChat?.id
@@ -89,6 +115,16 @@ function App(): React.JSX.Element {
   const isSettings = view.type === 'settings'
   const anyStreaming = chats.some((c) => c.streamingMessageId !== undefined)
   const activeChatStreaming = activeChatStreamingMessageId !== undefined
+
+  const openTerminalPanel = useCallback(() => {
+    setTerminalMounted(true)
+    setTerminalOpen(true)
+  }, [])
+
+  const toggleTerminalPanel = useCallback(() => {
+    setTerminalMounted(true)
+    setTerminalOpen((v) => !v)
+  }, [])
 
   const sendMessage = useCallback(
     (text: string) => {
@@ -170,7 +206,7 @@ function App(): React.JSX.Element {
   useEffect(() => {
     const unsub = window.api.tray.onCommand((cmd, payload) => {
       if (cmd === 'new-chat') newChat()
-      else if (cmd === 'open-terminal') setTerminalOpen(true)
+      else if (cmd === 'open-terminal') openTerminalPanel()
       else if (cmd === 'reveal-project') revealInFolder()
       else if (cmd === 'open-chat' && payload) selectChat(payload)
       else if (cmd === 'check-updates') void window.api.updater.check()
@@ -180,7 +216,7 @@ function App(): React.JSX.Element {
       }
     })
     return (): void => unsub()
-  }, [newChat, selectChat])
+  }, [newChat, openTerminalPanel, selectChat])
 
   // Mirror the most-recently-active chats into the tray's "Recent chats"
   // submenu. Chats live in renderer localStorage, so the main process can't
@@ -293,7 +329,7 @@ function App(): React.JSX.Element {
         setSidebarOpen((v) => !v)
       } else if (matchShortcut(e, { key: 't', mod: true })) {
         e.preventDefault()
-        setTerminalOpen((v) => !v)
+        toggleTerminalPanel()
       } else if (matchShortcut(e, { key: 'o', mod: true, shift: true })) {
         e.preventDefault()
         revealInFolder()
@@ -307,7 +343,7 @@ function App(): React.JSX.Element {
     }
     window.addEventListener('keydown', onKey)
     return (): void => window.removeEventListener('keydown', onKey)
-  }, [newChat, openSettings])
+  }, [newChat, openSettings, toggleTerminalPanel])
 
   const trafficLightInset = IS_MAC && !chrome.fullscreen
 
@@ -323,16 +359,20 @@ function App(): React.JSX.Element {
           onCompose={view.type === 'home' ? undefined : newChat}
           onOpenEditor={isEditor ? closeEditor : openEditor}
           editorActive={isEditor}
-          onOpenTerminal={() => setTerminalOpen((v) => !v)}
+          onOpenTerminal={toggleTerminalPanel}
           onOpenSettings={isSettings ? closeSettings : openSettings}
           onOpenShortcuts={() => setShortcutsOpen(true)}
           onOpenAbout={() => setAboutOpen(true)}
         />
         <main className="min-h-0 flex-1">
           {isSettings ? (
-            <SettingsPage />
+            <Suspense fallback={<SurfaceFallback />}>
+              <SettingsPage />
+            </Suspense>
           ) : isEditor ? (
-            <Workspace />
+            <Suspense fallback={<SurfaceFallback />}>
+              <Workspace />
+            </Suspense>
           ) : activeChat ? (
             <Thread
               chat={activeChat}
@@ -346,7 +386,7 @@ function App(): React.JSX.Element {
               draft={draft}
               onDraftChange={setDraft}
               onSubmit={sendMessage}
-              onOpenTerminal={() => setTerminalOpen(true)}
+              onOpenTerminal={openTerminalPanel}
               onReveal={revealInFolder}
               onOpenGit={() => setGitOpen(true)}
               branch={gitInfo?.branch ?? null}
@@ -354,7 +394,11 @@ function App(): React.JSX.Element {
               showSuggestions={settings.suggestedPrompts}
             />
           )}
-          <TerminalPanel open={terminalOpen} onClose={() => setTerminalOpen(false)} />
+          {terminalMounted && (
+            <Suspense fallback={null}>
+              <TerminalPanel open={terminalOpen} onClose={() => setTerminalOpen(false)} />
+            </Suspense>
+          )}
         </main>
 
         <Sidebar
@@ -377,15 +421,23 @@ function App(): React.JSX.Element {
           onForward={canForward ? forward : undefined}
         />
 
-        <SearchChatsDialog
-          open={searchOpen}
-          onOpenChange={setSearchOpen}
-          chats={chats}
-          activeChatId={activeChat?.id ?? null}
-          onSelectChat={(id) => selectChat(id)}
-        />
+        {searchOpen && (
+          <Suspense fallback={null}>
+            <SearchChatsDialog
+              open={searchOpen}
+              onOpenChange={setSearchOpen}
+              chats={chats}
+              activeChatId={activeChat?.id ?? null}
+              onSelectChat={(id) => selectChat(id)}
+            />
+          </Suspense>
+        )}
 
-        <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+        {shortcutsOpen && (
+          <Suspense fallback={null}>
+            <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+          </Suspense>
+        )}
 
         <Dialog open={aboutOpen} onOpenChange={setAboutOpen}>
           <DialogContent>
@@ -399,9 +451,17 @@ function App(): React.JSX.Element {
           </DialogContent>
         </Dialog>
 
-        <GitPanel open={gitOpen} onOpenChange={setGitOpen} />
+        {gitOpen && (
+          <Suspense fallback={null}>
+            <GitPanel open={gitOpen} onOpenChange={setGitOpen} />
+          </Suspense>
+        )}
 
-        <TopupDialog />
+        {topupOpen && (
+          <Suspense fallback={null}>
+            <TopupDialog />
+          </Suspense>
+        )}
 
         <UpdateBanner />
 

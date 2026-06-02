@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
+import '@renderer/lib/monaco-setup'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type * as MonacoNS from 'monaco-editor'
 import { getSettings, useSettings } from '@renderer/lib/settings'
