@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowDown,
   Check,
@@ -63,8 +63,6 @@ export function Thread({
   const streaming = chat.streamingMessageId !== undefined
 
   const stopStreaming = useChatStore((s) => s.stopStreaming)
-  const regenerate = useChatStore((s) => s.regenerate)
-  const editUserMessage = useChatStore((s) => s.editUserMessage)
   const retryAfterError = useChatStore((s) => s.retryAfterError)
   const cancelQueued = useChatStore((s) => s.cancelQueued)
   const respondToCommandApproval = useChatStore((s) => s.respondToCommandApproval)
@@ -141,19 +139,19 @@ export function Thread({
     return () => observer.disconnect()
   }, [chat.id])
 
-  const handleRegenerate = (assistantId: string): void => regenerate(chat.id, assistantId, settings)
-  const handleEdit = (messageId: string, text: string): void =>
-    editUserMessage(chat.id, messageId, text, settings)
   const handleRetry = (): void => retryAfterError(chat.id, settings)
-  const latestChanges = latestFileChanges(chat)
-  const reviewChange = (change = latestChanges[0]): void => {
-    if (!change) return
-    openEditor()
-    void reviewChanges(change.path, {
-      addedRanges: change.addedRanges,
-      removedRanges: change.removedRanges
-    })
-  }
+  const latestChanges = useMemo(() => latestFileChanges(chat), [chat])
+  const reviewChange = useCallback(
+    (change = latestChanges[0]): void => {
+      if (!change) return
+      openEditor()
+      void reviewChanges(change.path, {
+        addedRanges: change.addedRanges,
+        removedRanges: change.removedRanges
+      })
+    },
+    [latestChanges, openEditor, reviewChanges]
+  )
   const reviewSummary =
     latestChanges.length > 0
       ? {
@@ -173,10 +171,10 @@ export function Thread({
           {chat.messages.map((m) => (
             <MessageBubble
               key={m.id}
+              chatId={chat.id}
+              chatSettings={settings}
               message={m}
               isStreaming={m.id === chat.streamingMessageId}
-              onEdit={(text) => handleEdit(m.id, text)}
-              onRegenerate={() => handleRegenerate(m.id)}
               onReviewChange={reviewChange}
             />
           ))}
@@ -262,26 +260,52 @@ export function Thread({
   )
 }
 
-function MessageBubble({
-  message,
-  isStreaming,
-  onEdit,
-  onRegenerate,
-  onReviewChange
-}: {
+interface MessageBubbleProps {
+  chatId: string
+  chatSettings: ChatSettingsSnapshot
   message: Message
   isStreaming: boolean
-  onEdit: (text: string) => void
-  onRegenerate: () => void
   onReviewChange: (change?: FileChangeRef) => void
-}): React.JSX.Element {
+}
+
+const MessageBubble = memo(function MessageBubble({
+  chatId,
+  chatSettings,
+  message,
+  isStreaming,
+  onReviewChange
+}: MessageBubbleProps): React.JSX.Element {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.text)
   const { settings } = useSettings()
+  const regenerate = useChatStore((s) => s.regenerate)
+  const editUserMessage = useChatStore((s) => s.editUserMessage)
+  const handleEdit = useCallback(
+    (text: string): void => editUserMessage(chatId, message.id, text, chatSettings),
+    [chatId, chatSettings, editUserMessage, message.id]
+  )
+  const handleRegenerate = useCallback(
+    (): void => regenerate(chatId, message.id, chatSettings),
+    [chatId, chatSettings, message.id, regenerate]
+  )
   const userBubbleClass =
     settings.messageStyle === 'minimal'
       ? 'px-0 py-1 text-sm whitespace-pre-wrap text-foreground/95'
       : 'rounded-2xl bg-input px-4 py-2.5 text-sm whitespace-pre-wrap'
+
+  const parts =
+    message.parts && message.parts.length > 0
+      ? message.parts
+      : message.text.length > 0
+        ? [{ kind: 'text' as const, text: message.text }]
+        : []
+  const changes = extractFileChanges(message.parts)
+  const refs = extractReferencedFiles(message.parts)
+  const split = splitChainAndFinal(parts)
+  const reviewMessageChange = useCallback(
+    (change = changes[0]): void => onReviewChange(change),
+    [changes, onReviewChange]
+  )
 
   if (message.role === 'user') {
     if (editing) {
@@ -314,7 +338,7 @@ function MessageBubble({
                   setDraft(message.text)
                   return
                 }
-                onEdit(t)
+                handleEdit(t)
                 setEditing(false)
               }}
             >
@@ -346,17 +370,6 @@ function MessageBubble({
     )
   }
 
-  const parts =
-    message.parts && message.parts.length > 0
-      ? message.parts
-      : message.text.length > 0
-        ? [{ kind: 'text' as const, text: message.text }]
-        : []
-
-  const changes = extractFileChanges(message.parts)
-  const refs = extractReferencedFiles(message.parts)
-  const split = splitChainAndFinal(parts)
-
   return (
     <div className="group flex max-w-[85%] flex-col gap-2 self-start">
       <div className="flex flex-col gap-3 text-sm leading-relaxed text-foreground/90">
@@ -381,13 +394,13 @@ function MessageBubble({
         {isStreaming && parts.length === 0 && <ThinkingIndicator />}
       </div>
       {!isStreaming && changes.length > 0 && (
-        <ChangeSummary changes={changes} onReviewChange={onReviewChange} />
+        <ChangeSummary changes={changes} onReviewChange={reviewMessageChange} />
       )}
       {!isStreaming && changes.length === 0 && refs.length > 0 && <FileReferences refs={refs} />}
       {!isStreaming && message.text.length > 0 && (
         <div className="flex items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
           <CopyAction text={message.text} />
-          <ActionButton label="Regenerate response" onClick={onRegenerate}>
+          <ActionButton label="Regenerate response" onClick={handleRegenerate}>
             <RefreshCw className="size-3.5" />
           </ActionButton>
           <FeedbackAction key={`${message.id}-up`} kind="up" />
@@ -398,6 +411,19 @@ function MessageBubble({
         </div>
       )}
     </div>
+  )
+}, areMessageBubblePropsEqual)
+
+function areMessageBubblePropsEqual(prev: MessageBubbleProps, next: MessageBubbleProps): boolean {
+  return (
+    prev.chatId === next.chatId &&
+    prev.message === next.message &&
+    prev.isStreaming === next.isStreaming &&
+    prev.onReviewChange === next.onReviewChange &&
+    prev.chatSettings.model === next.chatSettings.model &&
+    prev.chatSettings.workMode === next.chatSettings.workMode &&
+    prev.chatSettings.inferenceSpeed === next.chatSettings.inferenceSpeed &&
+    prev.chatSettings.projectCwd === next.chatSettings.projectCwd
   )
 }
 

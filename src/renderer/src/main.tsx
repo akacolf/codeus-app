@@ -5,8 +5,11 @@ import { createRoot } from 'react-dom/client'
 import App from './App'
 import { I18nProvider } from './lib/i18n'
 import { startMcpBridge } from './lib/mcp-bridge'
+import { mark, measure } from './lib/perf'
 
 const PRELOAD_RECOVERY_KEY = 'qc-codeus.preload-recovered'
+
+mark('renderer:entry')
 
 window.addEventListener('vite:preloadError', (event) => {
   event.preventDefault()
@@ -27,3 +30,8 @@ createRoot(document.getElementById('root')!).render(
     </I18nProvider>
   </StrictMode>
 )
+
+requestAnimationFrame(() => {
+  mark('renderer:first-frame')
+  measure('renderer:entry-to-first-frame', 'renderer:entry', 'renderer:first-frame')
+})

@@ -1,5 +1,15 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode
+} from 'react'
 import { Home } from './components/Home'
+import { LazySurfaceBoundary } from './components/LazySurfaceBoundary'
 import { Sidebar } from './components/Sidebar'
 import { SignInGate } from './components/SignInGate'
 import { Splash } from './components/Splash'
@@ -23,32 +33,43 @@ import { isDirty, useWorkspaceStore } from './stores/workspaceStore'
 import type { Chat } from './lib/chat'
 import { getUsage, subscribeUsage, type UsageSnapshot } from './lib/usage'
 import { useBillingStore } from './stores/billingStore'
+import { loadWithPerf, mark, measure, scheduleIdleWork } from './lib/perf'
 
-const GitPanel = lazy(() =>
-  import('./components/GitPanel').then((module) => ({ default: module.GitPanel }))
+const loadGitPanel = loadWithPerf('GitPanel', () => import('./components/GitPanel'))
+const loadSearchChatsDialog = loadWithPerf(
+  'SearchChatsDialog',
+  () => import('./components/SearchChatsDialog')
 )
+const loadSettingsPage = loadWithPerf('SettingsPage', () => import('./components/SettingsDialog'))
+const loadShortcutsDialog = loadWithPerf(
+  'ShortcutsDialog',
+  () => import('./components/ShortcutsDialog')
+)
+const loadTerminalPanel = loadWithPerf('TerminalPanel', () => import('./components/TerminalPanel'))
+const loadTopupDialog = loadWithPerf('TopupDialog', () => import('./components/TopupDialog'))
+const loadWorkspace = loadWithPerf('Workspace', () => import('./components/Workspace'))
+
+const GitPanel = lazy(() => loadGitPanel().then((module) => ({ default: module.GitPanel })))
 const SearchChatsDialog = lazy(() =>
-  import('./components/SearchChatsDialog').then((module) => ({
+  loadSearchChatsDialog().then((module) => ({
     default: module.SearchChatsDialog
   }))
 )
 const SettingsPage = lazy(() =>
-  import('./components/SettingsDialog').then((module) => ({ default: module.SettingsPage }))
+  loadSettingsPage().then((module) => ({ default: module.SettingsPage }))
 )
 const ShortcutsDialog = lazy(() =>
-  import('./components/ShortcutsDialog').then((module) => ({
+  loadShortcutsDialog().then((module) => ({
     default: module.ShortcutsDialog
   }))
 )
 const TerminalPanel = lazy(() =>
-  import('./components/TerminalPanel').then((module) => ({ default: module.TerminalPanel }))
+  loadTerminalPanel().then((module) => ({ default: module.TerminalPanel }))
 )
 const TopupDialog = lazy(() =>
-  import('./components/TopupDialog').then((module) => ({ default: module.TopupDialog }))
+  loadTopupDialog().then((module) => ({ default: module.TopupDialog }))
 )
-const Workspace = lazy(() =>
-  import('./components/Workspace').then((module) => ({ default: module.Workspace }))
-)
+const Workspace = lazy(() => loadWorkspace().then((module) => ({ default: module.Workspace })))
 
 function revealInFolder(): void {
   void window.api.revealInFolder()
@@ -65,6 +86,26 @@ const IS_MAC = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platfor
 
 function SurfaceFallback(): React.JSX.Element {
   return <div className="h-full w-full bg-background" />
+}
+
+function LazySurface({
+  name,
+  resetKey,
+  className,
+  fallback = null,
+  children
+}: {
+  name: string
+  resetKey?: unknown
+  className?: string
+  fallback?: ReactNode
+  children: ReactNode
+}): React.JSX.Element {
+  return (
+    <LazySurfaceBoundary name={name} resetKey={resetKey} className={className}>
+      <Suspense fallback={fallback}>{children}</Suspense>
+    </LazySurfaceBoundary>
+  )
 }
 
 function App(): React.JSX.Element {
@@ -89,6 +130,26 @@ function App(): React.JSX.Element {
   // Hoisted draft survives Home ↔ Thread transitions.
   const [draft, setDraft] = useState('')
   useThemeEffect()
+
+  useEffect(() => {
+    mark('app:mounted')
+    measure('renderer:entry-to-app-mounted', 'renderer:entry', 'app:mounted')
+    return scheduleIdleWork(() => {
+      const start = 'chunks:idle-preload:start'
+      const end = 'chunks:idle-preload:end'
+      mark(start)
+      void Promise.allSettled([
+        loadSettingsPage(),
+        loadSearchChatsDialog(),
+        loadShortcutsDialog(),
+        loadTerminalPanel(),
+        loadWorkspace()
+      ]).then(() => {
+        mark(end)
+        measure('chunks:idle-preload', start, end)
+      })
+    })
+  }, [])
 
   const chats = useChatStore((s) => s.chats)
   const view = useChatStore((s) => s.history[s.index])
@@ -117,13 +178,17 @@ function App(): React.JSX.Element {
   const activeChatStreaming = activeChatStreamingMessageId !== undefined
 
   const openTerminalPanel = useCallback(() => {
+    mark('surface:TerminalPanel:open')
     setTerminalMounted(true)
     setTerminalOpen(true)
   }, [])
 
   const toggleTerminalPanel = useCallback(() => {
     setTerminalMounted(true)
-    setTerminalOpen((v) => !v)
+    setTerminalOpen((v) => {
+      if (!v) mark('surface:TerminalPanel:open')
+      return !v
+    })
   }, [])
 
   const sendMessage = useCallback(
@@ -156,12 +221,21 @@ function App(): React.JSX.Element {
     ]
   )
 
-  const settingsSnapshot = {
-    model: settings.model,
-    workMode: settings.workMode,
-    inferenceSpeed: settings.inferenceSpeed,
-    projectCwd: settings.defaultProjectlessChat ? undefined : projectCwd
-  }
+  const settingsSnapshot = useMemo(
+    () => ({
+      model: settings.model,
+      workMode: settings.workMode,
+      inferenceSpeed: settings.inferenceSpeed,
+      projectCwd: settings.defaultProjectlessChat ? undefined : projectCwd
+    }),
+    [
+      settings.model,
+      settings.workMode,
+      settings.inferenceSpeed,
+      settings.defaultProjectlessChat,
+      projectCwd
+    ]
+  )
 
   useEffect(() => {
     void window.api.projectCwd().then(setProjectCwd)
@@ -366,13 +440,13 @@ function App(): React.JSX.Element {
         />
         <main className="min-h-0 flex-1">
           {isSettings ? (
-            <Suspense fallback={<SurfaceFallback />}>
+            <LazySurface name="Settings" resetKey="settings" fallback={<SurfaceFallback />}>
               <SettingsPage />
-            </Suspense>
+            </LazySurface>
           ) : isEditor ? (
-            <Suspense fallback={<SurfaceFallback />}>
+            <LazySurface name="Workspace" resetKey="workspace" fallback={<SurfaceFallback />}>
               <Workspace />
-            </Suspense>
+            </LazySurface>
           ) : activeChat ? (
             <Thread
               chat={activeChat}
@@ -395,9 +469,13 @@ function App(): React.JSX.Element {
             />
           )}
           {terminalMounted && (
-            <Suspense fallback={null}>
+            <LazySurface
+              name="Terminal"
+              resetKey={terminalOpen ? 'open' : 'closed'}
+              className="absolute inset-x-0 bottom-0 z-30 h-48"
+            >
               <TerminalPanel open={terminalOpen} onClose={() => setTerminalOpen(false)} />
-            </Suspense>
+            </LazySurface>
           )}
         </main>
 
@@ -422,7 +500,11 @@ function App(): React.JSX.Element {
         />
 
         {searchOpen && (
-          <Suspense fallback={null}>
+          <LazySurface
+            name="Search"
+            resetKey={searchOpen}
+            className="fixed inset-0 z-50 bg-background/80 backdrop-blur"
+          >
             <SearchChatsDialog
               open={searchOpen}
               onOpenChange={setSearchOpen}
@@ -430,13 +512,17 @@ function App(): React.JSX.Element {
               activeChatId={activeChat?.id ?? null}
               onSelectChat={(id) => selectChat(id)}
             />
-          </Suspense>
+          </LazySurface>
         )}
 
         {shortcutsOpen && (
-          <Suspense fallback={null}>
+          <LazySurface
+            name="Shortcuts"
+            resetKey={shortcutsOpen}
+            className="fixed inset-0 z-50 bg-background/80 backdrop-blur"
+          >
             <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
-          </Suspense>
+          </LazySurface>
         )}
 
         <Dialog open={aboutOpen} onOpenChange={setAboutOpen}>
@@ -452,15 +538,23 @@ function App(): React.JSX.Element {
         </Dialog>
 
         {gitOpen && (
-          <Suspense fallback={null}>
+          <LazySurface
+            name="Git"
+            resetKey={gitOpen}
+            className="fixed inset-0 z-50 bg-background/80 backdrop-blur"
+          >
             <GitPanel open={gitOpen} onOpenChange={setGitOpen} />
-          </Suspense>
+          </LazySurface>
         )}
 
         {topupOpen && (
-          <Suspense fallback={null}>
+          <LazySurface
+            name="Top up"
+            resetKey={topupOpen}
+            className="fixed inset-0 z-50 bg-background/80 backdrop-blur"
+          >
             <TopupDialog />
-          </Suspense>
+          </LazySurface>
         )}
 
         <UpdateBanner />
