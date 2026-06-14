@@ -636,7 +636,7 @@ function McpSection(): React.JSX.Element {
     }
   }
 
-  const command = info ? `claude mcp add --transport http qc-codeus "${info.url}"` : ''
+  const command = info ? `claude mcp add --transport http codeus-app "${info.url}"` : ''
 
   return (
     <>
@@ -929,11 +929,11 @@ function SystemSection(): React.JSX.Element {
   const { settings, set } = useSettings()
   return (
     <>
-      <PageHeader title="System" subtitle="How QC Codeus behaves alongside your OS." />
+      <PageHeader title="System" subtitle="How Codeus behaves alongside your OS." />
       <Field
         icon={AppWindow}
         title="Startup"
-        hint="Pair with the menu bar icon to keep QC Codeus quietly running."
+        hint="Pair with the menu bar icon to keep Codeus quietly running."
       >
         <ToggleRow
           label="Launch at login"
@@ -966,10 +966,10 @@ function PrivacySection(): React.JSX.Element {
   const [confirming, setConfirming] = useState(false)
   return (
     <>
-      <PageHeader title="Privacy & data" subtitle="QC Codeus keeps your chats on this Mac." />
+      <PageHeader title="Privacy & data" subtitle="Codeus keeps your chats on this Mac." />
       <Field icon={Shield} title="Telemetry">
         <p className="max-w-md text-xs leading-relaxed text-muted-foreground">
-          QC Codeus does not collect telemetry or analytics. Prompts you send are streamed to the
+          Codeus does not collect telemetry or analytics. Prompts you send are streamed to the
           production proxy, which forwards them to the upstream model — and otherwise stays out of
           your way.
         </p>

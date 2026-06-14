@@ -3,7 +3,8 @@
 // number of streamed requests and total characters of streamed text. Numbers
 // reset to zero on the day boundary (local time).
 
-const KEY = 'qc-codeus.usage.v1'
+const KEY = 'codeus-app.usage.v1'
+const LEGACY_KEY = 'qc-codeus.usage.v1'
 
 interface UsageSnapshot {
   day: string // YYYY-MM-DD local
@@ -32,8 +33,9 @@ const DEFAULT: UsageSnapshot = {
 function read(): UsageSnapshot {
   if (typeof window === 'undefined') return { ...DEFAULT }
   try {
-    const raw = window.localStorage.getItem(KEY)
+    const raw = window.localStorage.getItem(KEY) ?? window.localStorage.getItem(LEGACY_KEY)
     if (!raw) return { ...DEFAULT }
+    if (!window.localStorage.getItem(KEY)) window.localStorage.setItem(KEY, raw)
     const parsed = { ...DEFAULT, ...(JSON.parse(raw) as Partial<UsageSnapshot>) }
     if (parsed.day !== today()) {
       parsed.day = today()

@@ -420,7 +420,7 @@ export function Composer({
               }}
               onBlur={() => setMention(null)}
               onKeyDown={onKey}
-              placeholder={placeholder ?? 'Ask QC Codeus anything.  @ to mention files'}
+              placeholder={placeholder ?? 'Ask Codeus anything.  @ to mention files'}
               rows={1}
               className={cn(
                 'block w-full resize-none bg-transparent text-sm leading-relaxed outline-none placeholder:text-muted-foreground',

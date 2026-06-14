@@ -1,4 +1,4 @@
-// QC Codeus credit proxy — OpenAI-compatible /v1/chat/completions endpoint.
+// Codeus credit proxy — OpenAI-compatible /v1/chat/completions endpoint.
 //
 // NOTE: production now lives in the `quantum-club-website` repo at
 // `src/app/api/codeus/v1/chat/completions/route.ts`, deployed to Vercel and
@@ -18,7 +18,7 @@
 //      AI_GATEWAY_API_KEY for the Vercel fallback, or leave QC_MOCK_UPSTREAM=true
 //      to stream canned replies for free
 //   3. bun run dev   (binds on :3000)
-//   4. In QC Codeus: launch with QC_PROXY_BASE_URL=http://localhost:3000/v1
+//   4. In Codeus: launch with QC_PROXY_BASE_URL=http://localhost:3000/v1
 
 export const config = { runtime: 'edge' }
 

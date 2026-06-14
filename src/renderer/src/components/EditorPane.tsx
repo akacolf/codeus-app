@@ -5,7 +5,7 @@ import type * as MonacoNS from 'monaco-editor'
 import { getSettings, useSettings } from '@renderer/lib/settings'
 import { isDirty, useWorkspaceStore, type OpenFile } from '@renderer/stores/workspaceStore'
 
-const QC_THEME = 'qc-codeus-dark'
+const QC_THEME = 'codeus-app-dark'
 
 function languageForPath(path: string): string {
   const ext = path.toLowerCase().split('.').pop() ?? ''

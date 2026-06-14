@@ -7,7 +7,7 @@ import { I18nProvider } from './lib/i18n'
 import { startMcpBridge } from './lib/mcp-bridge'
 import { mark, measure } from './lib/perf'
 
-const PRELOAD_RECOVERY_KEY = 'qc-codeus.preload-recovered'
+const PRELOAD_RECOVERY_KEY = 'codeus-app.preload-recovered'
 
 mark('renderer:entry')
 

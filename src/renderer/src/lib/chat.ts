@@ -69,14 +69,17 @@ export function deriveTitle(text: string): string {
   return t.length > 40 ? t.slice(0, 40) + '…' : t
 }
 
-const STORAGE_KEY = 'qc-codeus.chats.v1'
+const STORAGE_KEY = 'codeus-app.chats.v1'
+const LEGACY_STORAGE_KEY = 'qc-codeus.chats.v1'
 const MAX_PERSISTED = 50
 
 export function loadChats(): Chat[] {
   if (typeof window === 'undefined') return []
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
+    const raw =
+      window.localStorage.getItem(STORAGE_KEY) ?? window.localStorage.getItem(LEGACY_STORAGE_KEY)
     if (!raw) return []
+    if (!window.localStorage.getItem(STORAGE_KEY)) window.localStorage.setItem(STORAGE_KEY, raw)
     const parsed = JSON.parse(raw) as Chat[]
     return parsed.map((c) => ({
       ...c,

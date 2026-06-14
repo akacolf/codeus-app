@@ -117,7 +117,7 @@ function Welcome({ onSignIn }: { onSignIn: () => void }): React.JSX.Element {
     >
       <Logo className="size-20" aria-hidden="true" />
       <div className="space-y-2">
-        <h1 className="text-2xl font-medium tracking-tight">Welcome to QC Codeus</h1>
+        <h1 className="text-2xl font-medium tracking-tight">Welcome to Codeus</h1>
         <p className="text-sm text-muted-foreground">
           Sign in with your Quantum Club account to start shipping.
         </p>

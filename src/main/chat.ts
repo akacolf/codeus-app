@@ -571,7 +571,7 @@ function systemPrompt({
   // clickable jump-to-line links, so the model gets a free UX win by following
   // the convention.
   return [
-    'You are QC Codeus, the agent inside Quantum Club’s research-preview IDE.',
+    "You are Codeus, the agent inside Anaxonic's research-preview IDE.",
     '',
     `Active project: ${cwd}`,
     'Tools: read_file, write_file, list_directory, run_command — all scoped to the active project.',

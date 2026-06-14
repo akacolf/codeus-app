@@ -120,7 +120,7 @@ export function UpdateBanner(): React.JSX.Element | null {
         >
           <div className="flex h-[52px] items-center justify-center bg-foreground/8 px-6">
             <DialogTitle className="text-xl font-semibold tracking-normal text-foreground/62">
-              Updating QC Codeus
+              Updating Codeus
             </DialogTitle>
             <DialogDescription className="sr-only">{title}</DialogDescription>
           </div>
@@ -188,11 +188,11 @@ function titleForState(state: UpdaterState, canSelfInstall: boolean): string {
     if (canSelfInstall) return `Preparing update ${state.version}...`
     return `Update ${state.version} available`
   }
-  if (state.kind === 'not-available') return 'QC Codeus is up to date'
+  if (state.kind === 'not-available') return 'Codeus is up to date'
   if (state.kind === 'downloading') return 'Downloading update...'
   if (state.kind === 'ready') return `Update ${state.version} ready`
   if (state.kind === 'error') return 'Update check failed'
-  return 'Updating QC Codeus'
+  return 'Updating Codeus'
 }
 
 function detailForState(state: UpdaterState, canSelfInstall: boolean): string {
@@ -203,7 +203,7 @@ function detailForState(state: UpdaterState, canSelfInstall: boolean): string {
   }
   if (state.kind === 'not-available') return 'No update is available'
   if (state.kind === 'downloading') return `${state.percent}% complete`
-  if (state.kind === 'ready') return 'Restart QC Codeus to finish installing'
+  if (state.kind === 'ready') return 'Restart Codeus to finish installing'
   if (state.kind === 'error') return state.message
   return ''
 }

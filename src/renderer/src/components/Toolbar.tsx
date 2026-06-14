@@ -107,7 +107,7 @@ export function Toolbar({
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            aria-label="QC Codeus menu"
+            aria-label="Codeus menu"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-muted-foreground transition-colors hover:bg-foreground/8 hover:text-foreground data-[state=open]:bg-foreground/8 data-[state=open]:text-foreground"
           >
@@ -125,7 +125,7 @@ export function Toolbar({
               <DropdownMenuSeparator />
             </>
           ) : (
-            <DropdownMenuLabel className="text-muted-foreground">QC Codeus</DropdownMenuLabel>
+            <DropdownMenuLabel className="text-muted-foreground">Codeus</DropdownMenuLabel>
           )}
 
           <DropdownMenuItem onSelect={() => onOpenShortcuts?.()} disabled={!onOpenShortcuts}>
@@ -147,7 +147,7 @@ export function Toolbar({
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => onOpenAbout?.()} disabled={!onOpenAbout}>
             <Info />
-            <span>About QC Codeus</span>
+            <span>About Codeus</span>
           </DropdownMenuItem>
 
           {signedIn ? (

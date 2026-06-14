@@ -83,10 +83,10 @@ function buildMenu(): Menu {
         }))
 
   return Menu.buildFromTemplate([
-    { label: 'QC Codeus', enabled: false },
+    { label: 'Codeus', enabled: false },
     { type: 'separator' },
     {
-      label: isShowing ? 'Hide QC Codeus' : 'Open QC Codeus',
+      label: isShowing ? 'Hide Codeus' : 'Open Codeus',
       click: () => {
         const w = deps?.getWindow()
         if (!w) return
@@ -109,8 +109,8 @@ function buildMenu(): Menu {
     { label: usageLabel ?? 'Usage unavailable', enabled: false },
     { label: 'Check for updates…', click: () => sendCommand('check-updates') },
     { type: 'separator' },
-    { label: 'Restart QC Codeus', click: () => sendCommand('restart') },
-    { label: 'Quit QC Codeus', click: () => app.quit() }
+    { label: 'Restart Codeus', click: () => sendCommand('restart') },
+    { label: 'Quit Codeus', click: () => app.quit() }
   ])
 }
 
@@ -123,7 +123,7 @@ export function createTray(initial: TrayDeps): void {
   if (tray) return
   deps = initial
   tray = new Tray(buildIcon())
-  tray.setToolTip('QC Codeus')
+  tray.setToolTip('Codeus')
   refreshMenu()
   // Refresh the visibility label every time the menu is about to open so
   // "Show/Hide" stays accurate without us subscribing to every window event.

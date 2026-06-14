@@ -8,7 +8,7 @@ import { getAccountId } from './identity'
 // the renderer asks `auth.start()`, the main process pops the browser via
 // `shell.openExternal`, polls the website's /poll endpoint until the user
 // approves or cancels, then persists the resulting session JWT inside
-// safeStorage. The custom `qc-codeus://` protocol shortcuts polling once
+// safeStorage. The custom `codeus-app://` protocol shortcuts polling once
 // the OS hands us the deeplink, but polling stays as the durable fallback.
 
 const QC_AUTH_BASE_URL = (
@@ -367,14 +367,14 @@ async function signOut(): Promise<void> {
   }
 }
 
-// Custom-protocol deeplink — `qc-codeus://auth/callback?userCode=…&status=…`.
+// Custom-protocol deeplink — `codeus-app://auth/callback?userCode=…&status=…`.
 // We don't trust the query for state; it's a hint that the website finished
 // confirming so we should poll once immediately rather than wait for the
 // next interval. The polling loop is the source of truth.
 export function handleAuthCallbackUrl(rawUrl: string): void {
   try {
     const url = new URL(rawUrl)
-    if (url.protocol !== 'qc-codeus:') return
+    if (url.protocol !== 'codeus-app:') return
     if (!url.pathname.includes('auth/callback') && url.host !== 'auth') return
     if (!active) return
     const incomingCode = url.searchParams

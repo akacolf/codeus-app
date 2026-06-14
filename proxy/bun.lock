@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "qc-codium-proxy",
+      "name": "codeus-app-proxy",
       "devDependencies": {
         "@types/bun": "^1.2.0",
         "@types/node": "^22.19.1",

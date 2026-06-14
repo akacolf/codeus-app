@@ -256,7 +256,8 @@ const DEFAULTS: Settings = {
   closeToTray: false
 }
 
-const KEY = 'qc-codeus.settings.v1'
+const KEY = 'codeus-app.settings.v1'
+const LEGACY_KEY = 'qc-codeus.settings.v1'
 
 const settingsSchema = z.object({
   permission: z.enum(['default', 'auto-review', 'full-access']).catch(DEFAULTS.permission),
@@ -317,8 +318,9 @@ const settingsSchema = z.object({
 function read(): Settings {
   if (typeof window === 'undefined') return DEFAULTS
   try {
-    const raw = window.localStorage.getItem(KEY)
+    const raw = window.localStorage.getItem(KEY) ?? window.localStorage.getItem(LEGACY_KEY)
     if (!raw) return DEFAULTS
+    if (!window.localStorage.getItem(KEY)) window.localStorage.setItem(KEY, raw)
     return settingsSchema.parse({ ...DEFAULTS, ...(JSON.parse(raw) as Partial<Settings>) })
   } catch {
     return DEFAULTS

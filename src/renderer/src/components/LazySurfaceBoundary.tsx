@@ -51,7 +51,7 @@ export class LazySurfaceBoundary extends Component<
             {this.props.name} failed to load
           </div>
           <p className="text-xs leading-relaxed text-muted-foreground">
-            Reload QC Codeus to recover the latest app assets.
+            Reload Codeus to recover the latest app assets.
           </p>
           <Button size="sm" onClick={() => window.location.reload()} className="gap-1.5">
             <RotateCw className="size-3.5" />

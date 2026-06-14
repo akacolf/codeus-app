@@ -333,7 +333,7 @@ function App(): React.JSX.Element {
     if (endsWithQuestion && !settings.questionNotifications) return
     if (Notification.permission === 'granted') {
       lastNotifiedMessageIdRef.current = activeChatLastMessage.id
-      const title = endsWithQuestion ? 'QC Codeus has a question' : 'QC Codeus finished'
+      const title = endsWithQuestion ? 'Codeus has a question' : 'Codeus finished'
       new Notification(title, { body: activeChatTitle })
     } else if (settings.permissionNotifications && Notification.permission === 'default') {
       void Notification.requestPermission()
@@ -528,7 +528,7 @@ function App(): React.JSX.Element {
         <Dialog open={aboutOpen} onOpenChange={setAboutOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>About QC Codeus</DialogTitle>
+              <DialogTitle>About Codeus</DialogTitle>
               <DialogDescription>Quantum Club’s research-preview agentic IDE.</DialogDescription>
             </DialogHeader>
             <p className="text-sm leading-relaxed text-foreground/85">

@@ -7,7 +7,7 @@ import { ipcMain } from 'electron'
 import { getActiveProjectCwd } from './project'
 
 const PROTOCOL_VERSION = '2025-06-18'
-const SERVER_NAME = 'qc-codeus'
+const SERVER_NAME = 'codeus-app'
 const SERVER_VERSION = '0.1.0'
 
 interface SelectionState {
@@ -126,29 +126,29 @@ async function readActiveFile(): Promise<{
 function listResources(): ResourceDescriptor[] {
   return [
     {
-      uri: 'qccodeus://project/root',
+      uri: 'codeusapp://project/root',
       name: 'Project root',
-      description: 'Absolute path of the project currently open in QC Codeus.',
+      description: 'Absolute path of the project currently open in Codeus.',
       mimeType: 'text/plain',
       read: async () => ({ text: getActiveProjectCwd() })
     },
     {
-      uri: 'qccodeus://project/active-file',
+      uri: 'codeusapp://project/active-file',
       name: 'Active editor file',
       description:
-        'The file currently focused in the QC Codeus editor, including its on-disk contents.',
+        'The file currently focused in the Codeus editor, including its on-disk contents.',
       mimeType: 'application/json',
       read: async () => ({ text: JSON.stringify(await readActiveFile(), null, 2) })
     },
     {
-      uri: 'qccodeus://project/open-tabs',
+      uri: 'codeusapp://project/open-tabs',
       name: 'Open editor tabs',
       description: 'List of files currently open in the editor tab strip, with dirty state.',
       mimeType: 'application/json',
       read: async () => ({ text: JSON.stringify(ideState.openTabs, null, 2) })
     },
     {
-      uri: 'qccodeus://project/selection',
+      uri: 'codeusapp://project/selection',
       name: 'Current selection',
       description:
         'The text selection in the active editor (path, start/end line+column, selected text). Null when nothing is selected.',
@@ -156,7 +156,7 @@ function listResources(): ResourceDescriptor[] {
       read: async () => ({ text: JSON.stringify(ideState.selection, null, 2) })
     },
     {
-      uri: 'qccodeus://project/terminal-cwd',
+      uri: 'codeusapp://project/terminal-cwd',
       name: 'Terminal working directory',
       description:
         'Working directory used by new terminal tabs. Currently mirrors the project root.',
@@ -247,7 +247,7 @@ let active: McpServerHandle | null = null
 
 // Claude Code's IDE auto-discovery scans `~/.claude/ide/<port>.lock` files on
 // startup. Writing one here lets `claude` running in our in-app terminal pick
-// up QC Codeus as the active IDE without a manual `claude mcp add`.
+// up Codeus as the active IDE without a manual `claude mcp add`.
 // Schema is based on the format Claude Code's VS Code/JetBrains extensions
 // emit — if Anthropic changes it upstream, this will need updating.
 async function writeLockFile(port: number, token: string): Promise<string | null> {
@@ -258,7 +258,7 @@ async function writeLockFile(port: number, token: string): Promise<string | null
     const payload = {
       pid: process.pid,
       workspaceFolders: [getActiveProjectCwd()],
-      ideName: 'QC Codeus',
+      ideName: 'Codeus',
       transport: 'http',
       url: `http://127.0.0.1:${port}/mcp`,
       authToken: token,
@@ -376,7 +376,7 @@ export async function startMcpServer(): Promise<McpServerHandle> {
         'access-control-allow-origin': '*'
       })
       // Send a comment so the connection is established, then close.
-      res.write(': qc-codeus mcp\n\n')
+      res.write(': codeus-app mcp\n\n')
       res.end()
       return
     }

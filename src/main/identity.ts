@@ -7,7 +7,7 @@ import { z } from 'zod'
 const QC_CLIENT_TOKEN =
   process.env.QC_CLIENT_TOKEN || '08606d51e72936e8dc17d6dcd0481d2a5a0d97b0c825851b5189b2b95be91c06'
 
-// QC Codeus identity: a stable per-install UUID the proxy uses to key the
+// Codeus identity: a stable per-install UUID the proxy uses to key the
 // balance/ledger rows. Stored in plain JSON inside userData — leaking it lets
 // someone spend that account's balance, which is the same threat model as the
 // API token before x402 landed. When Clerk + Stripe come online post-Atlas

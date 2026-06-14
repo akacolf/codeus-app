@@ -155,7 +155,7 @@ export function Sidebar({
         <div className="flex items-center gap-2 px-5 pt-3 pb-5">
           <Logo aria-hidden className="size-9" />
           <div className="flex min-w-0 flex-col leading-tight">
-            <span className="text-lg font-medium tracking-tight">QC Codeus</span>
+            <span className="text-lg font-medium tracking-tight">Codeus</span>
             <span className="text-[11px] text-muted-foreground">Research preview</span>
           </div>
         </div>

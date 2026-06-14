@@ -61,11 +61,14 @@ function defaultShellLabel(): string {
 const DEFAULT_HEIGHT = 200
 const MIN_HEIGHT = 120
 const TOP_RESERVED = 40 // toolbar height — fullscreen fills everything below it
-const HEIGHT_KEY = 'qc-codeus.terminal.height.v2'
+const HEIGHT_KEY = 'codeus-app.terminal.height.v2'
+const LEGACY_HEIGHT_KEY = 'qc-codeus.terminal.height.v2'
 
 function readSavedHeight(): number {
   if (typeof window === 'undefined') return DEFAULT_HEIGHT
-  const raw = window.localStorage.getItem(HEIGHT_KEY)
+  const raw =
+    window.localStorage.getItem(HEIGHT_KEY) ?? window.localStorage.getItem(LEGACY_HEIGHT_KEY)
+  if (raw && !window.localStorage.getItem(HEIGHT_KEY)) window.localStorage.setItem(HEIGHT_KEY, raw)
   const n = raw ? Number(raw) : NaN
   return Number.isFinite(n) && n >= MIN_HEIGHT ? n : DEFAULT_HEIGHT
 }

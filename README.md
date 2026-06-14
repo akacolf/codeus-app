@@ -1,6 +1,6 @@
-# QC Codeus
+# Codeus
 
-QC Codeus is **Quantum Club**'s next-gen agentic development platform — an IDE
+Codeus is **Quantum Club**'s next-gen agentic development platform — an IDE
 experience deeply merged with autonomous coding agents. Think of it as the
 ground where products like T3 Code or Codex meet a full IDE surface.
 

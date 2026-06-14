@@ -1,9 +1,9 @@
-appId: club.quantum.qccodeus
-productName: QC Codeus
+appId: sh.anaxonic.codeusapp
+productName: Codeus
 protocols:
-  - name: QC Codeus
+  - name: Codeus
     schemes:
-      - qc-codeus
+      - codeus-app
 directories:
   buildResources: build
 files:
@@ -16,9 +16,9 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: qc-codeus
+  executableName: codeus-app
 nsis:
-  artifactName: qc-codeus-windows-${arch}.${ext}
+  artifactName: codeus-app-windows-${arch}.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
@@ -36,7 +36,7 @@ mac:
     - target: zip
       arch: [arm64, x64]
 dmg:
-  artifactName: qc-codeus-mac-${arch}.${ext}
+  artifactName: codeus-app-mac-${arch}.${ext}
 linux:
   target:
     - AppImage
@@ -44,7 +44,7 @@ linux:
   maintainer: Quantum Club
   category: Utility
 appImage:
-  artifactName: qc-codeus-linux-${arch}.${ext}
+  artifactName: codeus-app-linux-${arch}.${ext}
 npmRebuild: false
 publish:
   provider: generic

@@ -285,15 +285,15 @@ function createWindow(): void {
 function registerCustomProtocol(): void {
   if (process.defaultApp) {
     if (process.argv.length >= 2) {
-      app.setAsDefaultProtocolClient('qc-codeus', process.execPath, [resolve(process.argv[1])])
+      app.setAsDefaultProtocolClient('codeus-app', process.execPath, [resolve(process.argv[1])])
     }
   } else {
-    app.setAsDefaultProtocolClient('qc-codeus')
+    app.setAsDefaultProtocolClient('codeus-app')
   }
 }
 
 function deeplinkFromArgv(argv: string[]): string | null {
-  return argv.find((a) => a.startsWith('qc-codeus://')) ?? null
+  return argv.find((a) => a.startsWith('codeus-app://')) ?? null
 }
 
 // Single-instance: a second launch with a deeplink forwards it into the
@@ -324,7 +324,7 @@ if (!gotLock) {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
-  electronApp.setAppUserModelId('club.quantum.qccodeus')
+  electronApp.setAppUserModelId('sh.anaxonic.codeusapp')
   loadSystemSettings()
 
   if (process.platform === 'darwin' && app.dock) {
@@ -370,7 +370,7 @@ app.whenReady().then(() => {
     setTrayUsage(typeof label === 'string' && label.length > 0 ? label : null)
     return { ok: true as const }
   })
-  // Restart in place — used by the tray "Restart QC Codeus" item and the
+  // Restart in place — used by the tray "Restart Codeus" item and the
   // renderer's restart affordance. The renderer guards unsaved editor files
   // before calling this, so we relaunch immediately.
   ipcMain.handle('app:restart', () => {

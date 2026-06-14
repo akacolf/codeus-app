@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-QC Codeus is Quantum Club's research-preview agentic IDE — an Electron desktop app with a chat-first home (Codex-style composer) and a Claude-style slide-in sidebar. QC is an AI & research company, so framing is "research preview" not "alpha/beta". Positioned alongside T3 Code / Codex but aiming at a full IDE surface. The chat surface, an in-app `node-pty` terminal, and a Monaco-backed editor pane (file tree + tabs + Cmd+S save via project-scoped `fs:*` IPC) are all wired.
+Codeus is Anaxonic's research-preview agentic IDE — an Electron desktop app with a chat-first home (Codex-style composer) and a Claude-style slide-in sidebar. Anaxonic is an AI & research company, so framing is "research preview" not "alpha/beta". Positioned alongside T3 Code / Codex but aiming at a full IDE surface. The chat surface, an in-app `node-pty` terminal, and a Monaco-backed editor pane (file tree + tabs + Cmd+S save via project-scoped `fs:*` IPC) are all wired.
 
-Repo: `github.com/atomicfield/qc-codeus` (private; renamed from `qc-codium` on 2026-05-20 — GitHub auto-redirects the old URL). Working tree lives at `~/Desktop/qc-codeus` (was originally scaffolded at `~/projects/qc-codium`, relocated to `~/Desktop/qc-codium`, and renamed to `~/Desktop/qc-codeus` alongside the product rename).
+Repo: `github.com/atomicfield/codeus-app`. Working tree lives at `~/Desktop/codeus-app`.
 
 ## Stack & package manager
 
@@ -52,13 +52,13 @@ Three independently-built bundles, defined in `electron.vite.config.ts`:
   - `<Thread />` — rendered when `view.type === 'chat'`; streams assistant deltas from the store.
   - `<Sidebar />` — Claude-style slide-in panel (absolute, `w-72`, slides on `translate-x`). Backdrop click + `Escape` close it. Renders the QC mark, nav (New chat, Search chats), then **two top-level sections in order: `Projects` (collapsible groups, one per `projectCwd`) above `Chats` (flat list of ungrouped chats)**. The string "No folder" is retired — the ungrouped bucket renders as its own `Chats` section header (`MessageSquare` icon), not as a folder. Per-row hover actions (Rename inline / Delete via `DropdownMenu`).
   - `<SearchChatsDialog />` — Cmd-K palette over the chat list; `showCloseButton={false}` (intentional — Escape/backdrop close it).
-  - `<TerminalPanel />` — bottom-anchored `xterm.js` panel with a tab strip, backed by main-process `node-pty` sessions. **Resizable from a 2px drag handle on the top edge** (cursor `row-resize`, drag clamps between `MIN_HEIGHT=120` and `window.innerHeight - 80`, double-click resets to default, height persisted to `localStorage['qc-codeus.terminal.height.v2']`). Header has a `Maximize2/Minimize2` fullscreen toggle beside the close button — fullscreen mode expands to the full clamp without overwriting the saved drag height.
+  - `<TerminalPanel />` — bottom-anchored `xterm.js` panel with a tab strip, backed by main-process `node-pty` sessions. **Resizable from a 2px drag handle on the top edge** (cursor `row-resize`, drag clamps between `MIN_HEIGHT=120` and `window.innerHeight - 80`, double-click resets to default, height persisted to `localStorage['codeus-app.terminal.height.v2']`). Header has a `Maximize2/Minimize2` fullscreen toggle beside the close button — fullscreen mode expands to the full clamp without overwriting the saved drag height.
   - `<Splash />` — z-50 overlay that fades out after ~1.4s on first mount.
 
 ### Key invariants when extending
 
 - **Three TypeScript projects, three tsconfigs:** `tsconfig.node.json` covers main + preload, `tsconfig.web.json` covers renderer. Both run with `noEmit: true` (no `composite`, no `baseUrl` — `paths` use leading `./`). `tsconfig.json` is a `files: []` root carrying `compilerOptions.paths` for tooling (shadcn CLI reads it). `bun run typecheck` runs both; CI parity requires both to pass.
-- **Agent / model code belongs in main, not renderer.** API keys must not sit in the renderer bundle, and the product does not surface a bring-your-own-key flow — QC Codeus provides the upstream service. The renderer calls `window.api.chat.start`; the main process forwards to the production proxy at `api.quantumclub.sh/v1` which holds the AI Gateway key. When swapping providers, keep the secret on the main/proxy side; do not reintroduce a `safeStorage`-backed user key field in Settings.
+- **Agent / model code belongs in main, not renderer.** API keys must not sit in the renderer bundle, and the product does not surface a bring-your-own-key flow — Codeus provides the upstream service. The renderer calls `window.api.chat.start`; the main process forwards to the production proxy at `api.quantumclub.sh/v1` which holds the AI Gateway key. When swapping providers, keep the secret on the main/proxy side; do not reintroduce a `safeStorage`-backed user key field in Settings.
 - **Renderer state lives in the Zustand store, not in component context.** `useChatStore` is the source of truth for chats, navigation history, and streaming. Component-local state is fine for ephemeral UI (open/closed dialogs, hover state, draft text); persisted or cross-component state goes through the store. `subscribeWithSelector` is enabled so `useChatStore.subscribe(selector, listener)` can drive side effects (the chat-list persistence subscription is the canonical example).
 - **Tokens, not raw hex.** Use the shadcn token names (`bg-background`, `text-foreground`, `bg-card`, `bg-primary`, `text-muted-foreground`, etc.). Add new tokens by extending `:root` + `@theme inline` in `main.css` — don't hardcode hex in components.
 - **Black & white theme, no outline borders.** Hard product rule: the palette is strict grayscale (no accent hue), and components must not render visible border lines. `--border` is set to `transparent`; a base layer also forces `border-color: transparent` on every element. When `bunx shadcn@latest add` pulls a new primitive, **immediately review the generated file** and strip `border`, `border-input`, and `aria-invalid:border-destructive` classes from cva variants. For dividers (Separator, ScrollArea thumb) use `bg-white/8` to `bg-white/20` — a subtle gray bar, never a border line.
@@ -84,10 +84,10 @@ Components land in `src/renderer/src/components/ui/`. After install, audit for b
 
 - `resources/logo.svg` is the canonical mark (rounded black square with `<>`).
 - `build/icon.png` is what electron-builder rasterizes into `.icns` / `.ico` / Linux sizes. `resources/icon.png` is also referenced as the Linux runtime window icon (`src/main/index.ts:4`). Keep both in sync (currently byte-identical 1024×1024 PNGs); regenerate from `logo.svg` when the mark changes.
-- App identity is set in `electron-builder.yml`: `appId: club.quantum.qccodeus`, `productName: QC Codeus`, `executableName: qc-codeus`. `setAppUserModelId` in `src/main/index.ts` must stay in sync with `appId`. (Bumping `appId` orphans any previously installed `qccodium` build — fresh install required.)
+- App identity is set in `electron-builder.yml`: `appId: sh.anaxonic.codeusapp`, `productName: Codeus`, `executableName: codeus-app`. `setAppUserModelId` in `src/main/index.ts` must stay in sync with `appId`.
 
 ## Git conventions
 
 - Commits are authored as `akacolf <98905290+akacolf@users.noreply.github.com>` (set in this repo's local git config).
 - **No `Co-Authored-By: Claude …` trailer** — the user has explicitly opted out.
-- Remote: `https://github.com/atomicfield/qc-codeus` (private).
+- Remote: `https://github.com/atomicfield/codeus-app` (private).

@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "qc-codium",
+      "name": "codeus-app",
       "dependencies": {
         "@ai-sdk/openai-compatible": "^2.0.48",
         "@electron-toolkit/preload": "^3.0.2",

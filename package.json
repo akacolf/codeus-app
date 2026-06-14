@@ -1,10 +1,10 @@
 {
-  "name": "qc-codeus",
+  "name": "codeus-app",
   "version": "0.3.0",
-  "description": "QC Codeus — Quantum Club's next-gen agentic development platform merged with IDE experiences.",
+  "description": "Codeus — Anaxonic's agentic development platform merged with IDE experiences.",
   "main": "./out/main/index.js",
   "author": "Quantum Club",
-  "homepage": "https://github.com/atomicfield/qc-codeus",
+  "homepage": "https://github.com/atomicfield/codeus-app",
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",

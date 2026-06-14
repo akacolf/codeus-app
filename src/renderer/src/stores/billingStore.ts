@@ -11,7 +11,7 @@ export function microsToDollars(micros: number): number {
 
 export function formatBalance(micros: number | null): string {
   if (micros === null) return '—'
-  return `$${microsToDollars(micros).toFixed(2)}`
+  return `$${Math.max(0, microsToDollars(micros)).toFixed(2)}`
 }
 
 interface BillingStore {

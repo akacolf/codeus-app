@@ -1,5 +1,5 @@
 {
-  "name": "qc-codeus-proxy",
+  "name": "codeus-app-proxy",
   "version": "0.1.0",
   "private": true,
   "description": "Quantum Club credit proxy — OpenAI-compatible chat completions forwarder",
